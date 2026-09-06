@@ -1,0 +1,29 @@
+name: capture-baselines
+
+on:
+  workflow_dispatch:
+
+jobs:
+  capture:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install
+        run: pip install -e ".[dev]"
+
+      - name: Capture baselines in the CI Docker environment
+        run: |
+          hotspot-detector capture \
+            --manifest demo_service/hotspot-manifest.yaml \
+            --output demo_service/baselines.yaml
+
+      - name: Upload baselines
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-baselines
+          path: demo_service/baselines.yaml
