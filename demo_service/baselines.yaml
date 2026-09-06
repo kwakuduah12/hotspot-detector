@@ -1,15 +1,15 @@
 service_area: demo-platform
-captured_at: '2026-09-04T20:38:20Z'
+captured_at: '2026-09-06T22:21:41Z'
 environment:
-  runtime: local
+  runtime: docker
   base_url: http://127.0.0.1:8000
 repeats: 5
 operations:
   ingest_bulk:
     serialize:
-      baseline_ms: 173.297
+      baseline_ms: 261.816
     index:
-      baseline_ms: 40.942
+      baseline_ms: 58.446
   query_filter:
     scan:
-      baseline_ms: 35.241
+      baseline_ms: 69.719

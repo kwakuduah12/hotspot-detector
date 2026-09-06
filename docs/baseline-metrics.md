@@ -7,21 +7,22 @@ Baselines are median operation runtimes from the test environment, stored in [`d
 ```bash
 hotspot-detector capture \
   --manifest demo_service/hotspot-manifest.yaml \
-  --output demo_service/baselines.yaml \
-  --no-docker
+  --output demo_service/baselines.yaml
 ```
 
-Omit `--no-docker` when Docker is available so capture uses the same Compose stack as CI.
+That is the same Docker Compose stack `perf.yml` uses. Add `--no-docker` only for a local laptop snapshot; those numbers are not valid CI baselines.
 
-Each workload runs `repeats` times (5). The comparator uses the **median** of those samples. Thresholds were widened to 30% after capture-to-capture serialize variance of ~25% on the same laptop; recapture in GitHub Actions before treating CI numbers as authoritative.
+Each workload runs `repeats` times (5). The comparator uses the **median** of those samples. Thresholds were widened to 30% after capture-to-capture serialize variance of ~25% on the same laptop.
 
-## Environment (initial capture)
+Checked-in numbers come from GitHub Actions (`ubuntu-latest`, `python:3.12-slim` via Compose). Recapture with **Actions → capture-baselines → Run workflow** (or `gh workflow run capture-baselines.yml`) and commit the artifact; do not hand-edit medians.
 
-From `demo_service/baselines.yaml` after `hotspot-detector capture --no-docker` on 2026-09-04 (CPython 3.13, macOS, uvicorn on `http://127.0.0.1:8000`):
+## Environment (CI capture)
 
-- ingest_bulk.serialize median: 173.3ms
-- ingest_bulk.index median: 40.9ms
-- query_filter.scan median: 35.2ms
+From `demo_service/baselines.yaml` after `hotspot-detector capture` on GitHub Actions, 2026-09-06 (`ubuntu-latest`, Docker, `http://127.0.0.1:8000`):
+
+- ingest_bulk.serialize median: 261.8ms
+- ingest_bulk.index median: 58.4ms
+- query_filter.scan median: 69.7ms
 
 Workload size is fixed: 1200 records, 256 sha256 rounds per record on serialize, 48 index rounds, 400 score rounds on query.
 
