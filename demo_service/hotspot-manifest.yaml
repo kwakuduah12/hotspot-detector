@@ -1,0 +1,50 @@
+version: 1
+service_area: demo-platform
+global_filters:
+  exclude_paths:
+    - "docs/**"
+    - "**/*.md"
+    - "tests/**"
+hotspots:
+  - id: ingest-path
+    paths:
+      - "demo_service/app/ingest.py"
+      - "demo_service/app/index.py"
+    workloads:
+      - ingest_bulk
+    notes: "CPU-heavy serialize + in-memory index; see docs/methodology.md"
+  - id: query-path
+    paths:
+      - "demo_service/app/query.py"
+    workloads:
+      - query_filter
+    notes: "Allocation-heavy scan/filter; see docs/methodology.md"
+workloads:
+  ingest_bulk:
+    description: Bulk ingest of N records through serialize then index
+    command:
+      - python
+      - -m
+      - demo_service.workloads.ingest_bulk
+    repeats: 5
+    operations:
+      - name: serialize
+        baseline_ms: 173.3
+        threshold_pct: 30
+        threshold_ms: 80
+      - name: index
+        baseline_ms: 40.9
+        threshold_pct: 30
+        threshold_ms: 40
+  query_filter:
+    description: Seeded scan/filter for a single tag
+    command:
+      - python
+      - -m
+      - demo_service.workloads.query_filter
+    repeats: 5
+    operations:
+      - name: scan
+        baseline_ms: 35.2
+        threshold_pct: 30
+        threshold_ms: 40

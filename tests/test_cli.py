@@ -1,0 +1,253 @@
+import json
+
+import yaml
+
+from hotspot_detector.cli import app
+
+
+def test_match_cli_empty_file(tmp_path, runner, manifest_path):
+    changed = tmp_path / "changed.txt"
+    changed.write_text("")
+    result = runner.invoke(
+        app,
+        ["match", "--manifest", str(manifest_path), "--changed-files", str(changed)],
+    )
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout)["trigger"] is False
+
+
+def test_run_all_dry_run(tmp_path, runner, manifest_path, monkeypatch):
+    monkeypatch.setenv("HOTSPOT_DRY_RUN", "1")
+    out = tmp_path / "run.json"
+    result = runner.invoke(
+        app,
+        ["run", "--manifest", str(manifest_path), "--all", "--output", str(out)],
+    )
+    assert result.exit_code == 0, result.output
+    payload = json.loads(out.read_text())
+    assert set(payload["workloads"]) == {"ingest_bulk", "query_filter"}
+
+
+def test_run_rejects_unknown_workload(runner, manifest_path):
+    result = runner.invoke(
+        app,
+        [
+            "run",
+            "--manifest",
+            str(manifest_path),
+            "--workloads",
+            "does_not_exist",
+            "--output",
+            "run.json",
+        ],
+    )
+    assert result.exit_code != 0
+
+
+def test_match_cli_hotspot(tmp_path, runner, manifest_path):
+    changed = tmp_path / "changed.txt"
+    changed.write_text("demo_service/app/ingest.py\n")
+    result = runner.invoke(
+        app,
+        [
+            "match",
+            "--manifest",
+            str(manifest_path),
+            "--changed-files",
+            str(changed),
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.stdout)
+    assert payload["trigger"] is True
+    assert "ingest_bulk" in payload["workloads"]
+
+
+def test_match_cli_docs_quiet_skip(tmp_path, runner, manifest_path):
+    changed = tmp_path / "changed.txt"
+    changed.write_text("docs/adoption-guide.md\n")
+    result = runner.invoke(
+        app,
+        [
+            "match",
+            "--manifest",
+            str(manifest_path),
+            "--changed-files",
+            str(changed),
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.stdout)
+    assert payload["trigger"] is False
+    assert payload["workloads"] == []
+
+
+def test_match_cli_json_array(tmp_path, runner, manifest_path):
+    changed = tmp_path / "changed.json"
+    changed.write_text(json.dumps(["demo_service/app/query.py"]))
+    out = tmp_path / "match.json"
+    result = runner.invoke(
+        app,
+        [
+            "match",
+            "--manifest",
+            str(manifest_path),
+            "--changed-files",
+            str(changed),
+            "--output",
+            str(out),
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    payload = json.loads(out.read_text())
+    assert payload["workloads"] == ["query_filter"]
+
+
+def test_gate_docs_only_skips_without_running(tmp_path, runner, manifest_path):
+    changed = tmp_path / "changed.txt"
+    changed.write_text("README.md\n")
+    results_dir = tmp_path / "results"
+    result = runner.invoke(
+        app,
+        [
+            "gate",
+            "--manifest",
+            str(manifest_path),
+            "--changed-files",
+            str(changed),
+            "--results-dir",
+            str(results_dir),
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    assert "skipping" in result.output.lower()
+    assert (results_dir / "match.json").exists()
+    assert not (results_dir / "run.json").exists()
+
+
+def test_gate_dry_run_hotspot_writes_report(
+    tmp_path, runner, manifest_path, baselines_path, monkeypatch
+):
+    monkeypatch.setenv("HOTSPOT_DRY_RUN", "1")
+    changed = tmp_path / "changed.txt"
+    changed.write_text("demo_service/app/ingest.py\n")
+    results_dir = tmp_path / "results"
+    result = runner.invoke(
+        app,
+        [
+            "gate",
+            "--manifest",
+            str(manifest_path),
+            "--changed-files",
+            str(changed),
+            "--baselines",
+            str(baselines_path),
+            "--results-dir",
+            str(results_dir),
+            "--no-docker",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    run_payload = json.loads((results_dir / "run.json").read_text())
+    assert run_payload["dry_run"] is True
+    assert (results_dir / "compare.json").exists()
+    assert (results_dir / "report.md").exists()
+
+
+def test_compare_and_report_cli(tmp_path, runner, manifest_path, baselines_path):
+    run_path = tmp_path / "run.json"
+    run_path.write_text(
+        json.dumps(
+            {
+                "workloads": {
+                    "ingest_bulk": {
+                        "serialize": [400.0, 410.0, 405.0],
+                        "index": [40.0, 41.0, 39.0],
+                    }
+                }
+            }
+        )
+    )
+    compare_path = tmp_path / "compare.json"
+    result = runner.invoke(
+        app,
+        [
+            "compare",
+            "--run",
+            str(run_path),
+            "--manifest",
+            str(manifest_path),
+            "--baselines",
+            str(baselines_path),
+            "--output",
+            str(compare_path),
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    compared = json.loads(compare_path.read_text())
+    assert compared["overall"] == "regression"
+
+    report_path = tmp_path / "report.md"
+    report = runner.invoke(
+        app,
+        [
+            "report",
+            "--run",
+            str(run_path),
+            "--compare",
+            str(compare_path),
+            "--manifest",
+            str(manifest_path),
+            "--output",
+            str(report_path),
+        ],
+    )
+    assert report.exit_code == 0, report.output
+    body = report_path.read_text()
+    assert "<!-- hotspot-detector-report -->" in body
+    assert "does not block merge" in body
+
+
+def test_capture_dry_run_writes_snapshot(tmp_path, runner, manifest_path, monkeypatch):
+    monkeypatch.setenv("HOTSPOT_DRY_RUN", "1")
+    out = tmp_path / "baselines.yaml"
+    result = runner.invoke(
+        app,
+        [
+            "capture",
+            "--manifest",
+            str(manifest_path),
+            "--output",
+            str(out),
+            "--no-docker",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    payload = yaml.safe_load(out.read_text())
+    assert payload["service_area"] == "demo-platform"
+    assert "operations" in payload
+
+
+def test_gate_strict_dry_run_exits_nonzero(
+    tmp_path, runner, manifest_path, baselines_path, monkeypatch
+):
+    monkeypatch.setenv("HOTSPOT_DRY_RUN", "1")
+    changed = tmp_path / "changed.txt"
+    changed.write_text("demo_service/app/ingest.py\n")
+    result = runner.invoke(
+        app,
+        [
+            "gate",
+            "--manifest",
+            str(manifest_path),
+            "--changed-files",
+            str(changed),
+            "--baselines",
+            str(baselines_path),
+            "--results-dir",
+            str(tmp_path / "results"),
+            "--no-docker",
+            "--strict",
+        ],
+    )
+    assert result.exit_code == 1
