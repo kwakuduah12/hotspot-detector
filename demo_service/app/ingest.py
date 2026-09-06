@@ -6,6 +6,8 @@ shows it dominating CPU. See docs/methodology.md.
 Plant a synthetic regression with:
   HOTSPOT_SLOWDOWN_MS   sleep added once per serialize call
   HOTSPOT_SLOWDOWN_ROUNDS extra sha256 rounds per record
+
+This file is a hotspot: PRs that touch it should trigger ingest_bulk.
 """
 
 from __future__ import annotations
