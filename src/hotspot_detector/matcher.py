@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from hotspot_detector.manifest import Manifest
@@ -54,6 +55,7 @@ class MatchResult:
     matched_files: list[str] = field(default_factory=list)
     excluded_files: list[str] = field(default_factory=list)
     relevant_files: list[str] = field(default_factory=list)
+    cosmetic_files: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return {
@@ -63,10 +65,26 @@ class MatchResult:
             "matched_files": self.matched_files,
             "excluded_files": self.excluded_files,
             "relevant_files": self.relevant_files,
+            "cosmetic_files": self.cosmetic_files,
         }
 
+    def skip_reason(self) -> str | None:
+        if self.trigger:
+            return None
+        if self.cosmetic_files:
+            return (
+                "Hotspot files changed but only comments, docstrings, or "
+                "whitespace; skipping workloads."
+            )
+        return "No hotspot files changed; skipping workloads."
 
-def evaluate_pr_diff(changed_files: list[str], manifest: Manifest) -> MatchResult:
+
+def evaluate_pr_diff(
+    changed_files: list[str],
+    manifest: Manifest,
+    *,
+    is_cosmetic: Callable[[str], bool] | None = None,
+) -> MatchResult:
     exclusions = manifest.global_filters.exclude_paths
     excluded: list[str] = []
     relevant: list[str] = []
@@ -87,14 +105,20 @@ def evaluate_pr_diff(changed_files: list[str], manifest: Manifest) -> MatchResul
     matched_workloads: set[str] = set()
     matched_hotspots: list[str] = []
     matched_files: list[str] = []
+    cosmetic_files: list[str] = []
 
     for hotspot in manifest.hotspots:
         hotspot_hit = False
         for path in relevant:
-            if any(path_matches(path, pattern) for pattern in hotspot.paths):
-                hotspot_hit = True
-                if path not in matched_files:
-                    matched_files.append(path)
+            if not any(path_matches(path, pattern) for pattern in hotspot.paths):
+                continue
+            if is_cosmetic is not None and is_cosmetic(path):
+                if path not in cosmetic_files:
+                    cosmetic_files.append(path)
+                continue
+            hotspot_hit = True
+            if path not in matched_files:
+                matched_files.append(path)
         if hotspot_hit:
             matched_hotspots.append(hotspot.id)
             matched_workloads.update(hotspot.workloads)
@@ -107,4 +131,5 @@ def evaluate_pr_diff(changed_files: list[str], manifest: Manifest) -> MatchResul
         matched_files=matched_files,
         excluded_files=excluded,
         relevant_files=relevant,
+        cosmetic_files=cosmetic_files,
     )

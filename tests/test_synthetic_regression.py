@@ -13,8 +13,8 @@ import sys
 
 import pytest
 
-from hotspot_detector.compare import compare_run
-from hotspot_detector.manifest import BaselineCapture, load_manifest
+from hotspot_detector.compare import compare_runs
+from hotspot_detector.manifest import load_manifest
 from hotspot_detector.runner import parse_workload_stdout, wait_for_health
 
 
@@ -84,15 +84,15 @@ def test_planted_slowdown_is_regression(slow_server, repo_root, manifest_path):
         samples.setdefault(row["operation"], []).append(float(row["duration_ms"]))
 
     run = {"workloads": {"ingest_bulk": samples}}
-    last_good = BaselineCapture(
-        operations={
+    last_good = {
+        "workloads": {
             "ingest_bulk": {
-                "serialize": {"baseline_ms": 100.0},
-                "index": {"baseline_ms": 50.0},
+                "serialize": [100.0, 100.0, 100.0],
+                "index": samples.get("index", [50.0]),
             }
         }
-    )
-    compared = compare_run(run, load_manifest(manifest_path), last_good)
+    }
+    compared = compare_runs(last_good, run, load_manifest(manifest_path))
     serialize = next(op for op in compared.operations if op.operation == "serialize")
     assert serialize.status == "regression"
     assert serialize.current_ms is not None
