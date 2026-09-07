@@ -103,6 +103,33 @@ def test_match_cli_json_array(tmp_path, runner, manifest_path):
     assert payload["workloads"] == ["query_filter"]
 
 
+def test_gate_comment_only_hotspot_skips(tmp_path, runner, manifest_path):
+    changed = tmp_path / "changed.txt"
+    changed.write_text("demo_service/app/ingest.py\n")
+    results_dir = tmp_path / "results"
+    result = runner.invoke(
+        app,
+        [
+            "gate",
+            "--manifest",
+            str(manifest_path),
+            "--changed-files",
+            str(changed),
+            "--base-ref",
+            "HEAD",
+            "--results-dir",
+            str(results_dir),
+            "--no-docker",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    assert "comments, docstrings, or whitespace" in result.output
+    match = json.loads((results_dir / "match.json").read_text())
+    assert match["trigger"] is False
+    assert "demo_service/app/ingest.py" in match["cosmetic_files"]
+    assert not (results_dir / "run.json").exists()
+
+
 def test_gate_docs_only_skips_without_running(tmp_path, runner, manifest_path):
     changed = tmp_path / "changed.txt"
     changed.write_text("README.md\n")
@@ -156,6 +183,10 @@ def test_gate_dry_run_hotspot_writes_report(
 
 def test_gate_base_ref_dry_run(tmp_path, runner, manifest_path, monkeypatch):
     monkeypatch.setenv("HOTSPOT_DRY_RUN", "1")
+    monkeypatch.setattr(
+        "hotspot_detector.cli.is_cosmetic_path",
+        lambda *_args, **_kwargs: False,
+    )
     changed = tmp_path / "changed.txt"
     changed.write_text("demo_service/app/ingest.py\n")
     results_dir = tmp_path / "results"

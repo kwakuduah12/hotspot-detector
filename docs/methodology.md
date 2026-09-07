@@ -40,6 +40,7 @@ Observed (local CPython 3.13, 1200 records, `HASH_ROUNDS=256`):
 
 ## What we left out
 
+- Comment, docstring, and whitespace-only edits in a hotspot file. `ast.parse` drops comments; we also strip module/class/function docstrings before comparing merge-base to this PR. A `#` or docstring change on `ingest.py` does not run `ingest_bulk`.
 - `demo_service/app/main.py` — request routing only.
 - `demo_service/app/config.py` and `health.py` — cold paths; covered by `global_filters` plus simply not listing them.
 - Transitive / shared-library changes. The nightly workflow is the backstop for regressions that the path matcher cannot see.

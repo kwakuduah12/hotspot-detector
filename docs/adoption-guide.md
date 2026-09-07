@@ -47,7 +47,7 @@ That script starts the demo service with `HOTSPOT_SLOWDOWN_MS=150` and expects `
 | Cold paths | `config.py`, `health.py` (not listed) |
 | Warm / unwired | `demo_service/app/export.py` → `demo_service/candidates.yaml` |
 
-A docs-only change (`docs/**`, `**/*.md`, `tests/**`) matches nothing and the gate exits 0 without posting a comment.
+A docs-only change (`docs/**`, `**/*.md`, `tests/**`) matches nothing and the gate exits 0 without posting a comment. The same skip applies to comment, docstring, or whitespace-only edits in a hotspot `.py` file (compared to `--base-ref`).
 
 ## Shadow snippet (second area)
 

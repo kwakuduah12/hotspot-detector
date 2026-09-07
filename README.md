@@ -59,4 +59,4 @@ HOTSPOT_DRY_RUN=1 hotspot-detector run \
 
 ## Docs-only PRs
 
-Changes under `docs/**`, `**/*.md`, and `tests/**` are excluded. The gate prints a skip and exits 0 with no comment.
+Changes under `docs/**`, `**/*.md`, and `tests/**` are excluded. Comment, docstring, or whitespace-only edits to a hotspot `.py` file are also skipped when `gate`/`match` has `--base-ref`. The gate prints a skip and exits 0 with no comment.

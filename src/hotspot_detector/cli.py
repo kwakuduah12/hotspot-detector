@@ -16,8 +16,9 @@ from hotspot_detector.ab import (
     short_sha,
 )
 from hotspot_detector.compare import compare_run, compare_runs
+from hotspot_detector.cosmetic import is_cosmetic_path
 from hotspot_detector.manifest import load_baselines, load_manifest
-from hotspot_detector.matcher import evaluate_pr_diff
+from hotspot_detector.matcher import MatchResult, evaluate_pr_diff
 from hotspot_detector.report import render_ab_dry_run, render_markdown
 from hotspot_detector.runner import is_dry_run, run_workloads
 
@@ -42,6 +43,21 @@ def _manifest_relative(manifest: Path, repo_root: Path) -> Path:
     return manifest.resolve().relative_to(repo_root.resolve())
 
 
+def _cosmetic_checker(repo_root: Path, base_sha: str):
+    def check(path: str) -> bool:
+        return is_cosmetic_path(repo_root, base_sha, path)
+
+    return check
+
+
+def _skip_if_quiet(matched: MatchResult) -> None:
+    reason = matched.skip_reason()
+    if reason is None:
+        return
+    typer.echo(reason)
+    raise typer.Exit(0)
+
+
 def _write_json(path: Path | None, payload: dict) -> None:
     rendered = json.dumps(payload, indent=2) + "\n"
     if path is None:
@@ -63,11 +79,20 @@ def match(
         help="Newline-separated paths or a JSON array.",
     ),
     output: Path | None = typer.Option(None, "--output", "-o"),
+    base_ref: str | None = typer.Option(
+        None,
+        "--base-ref",
+        help="Git ref used to ignore comment/docstring/whitespace-only edits.",
+    ),
 ) -> None:
     """Print matched workloads for a changed-file list."""
     loaded = load_manifest(manifest)
     files = _read_changed_files(changed_files)
-    result = evaluate_pr_diff(files, loaded).to_dict()
+    cosmetic = None
+    if base_ref:
+        sha = resolve_merge_base(_repo_root(), base_ref)
+        cosmetic = _cosmetic_checker(_repo_root(), sha)
+    result = evaluate_pr_diff(files, loaded, is_cosmetic=cosmetic).to_dict()
     _write_json(output, result)
 
 
@@ -192,13 +217,15 @@ def gate(
         rel = _manifest_relative(manifest, repo_root)
         with last_good_worktree(repo_root, last_good_sha) as worktree:
             harness = load_manifest(worktree / rel)
-            matched = evaluate_pr_diff(files, harness)
+            matched = evaluate_pr_diff(
+                files,
+                harness,
+                is_cosmetic=_cosmetic_checker(repo_root, last_good_sha),
+            )
             (results_dir / "match.json").write_text(
                 json.dumps(matched.to_dict(), indent=2) + "\n"
             )
-            if not matched.trigger:
-                typer.echo("No hotspot files changed; skipping workloads.")
-                raise typer.Exit(0)
+            _skip_if_quiet(matched)
 
             last_good = run_workloads(
                 harness,
@@ -260,10 +287,7 @@ def gate(
     loaded = load_manifest(manifest)
     matched = evaluate_pr_diff(files, loaded)
     (results_dir / "match.json").write_text(json.dumps(matched.to_dict(), indent=2) + "\n")
-
-    if not matched.trigger:
-        typer.echo("No hotspot files changed; skipping workloads.")
-        raise typer.Exit(0)
+    _skip_if_quiet(matched)
 
     run_payload = run_workloads(
         loaded,

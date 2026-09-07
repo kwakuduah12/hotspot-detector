@@ -39,6 +39,19 @@ def resolve_merge_base(repo_root: Path, base_ref: str) -> str:
     return git_rev_parse(repo_root, base_ref)
 
 
+def git_show(repo_root: Path, ref: str, path: str) -> str | None:
+    completed = subprocess.run(
+        ["git", "show", f"{ref}:{path}"],
+        cwd=repo_root,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if completed.returncode != 0:
+        return None
+    return completed.stdout
+
+
 def short_sha(repo_root: Path, sha: str) -> str:
     completed = subprocess.run(
         ["git", "rev-parse", "--short", sha],
