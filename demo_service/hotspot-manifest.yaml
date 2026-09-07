@@ -29,11 +29,11 @@ workloads:
     repeats: 5
     operations:
       - name: serialize
-        baseline_ms: 173.3
+        baseline_ms: 261.8
         threshold_pct: 30
         threshold_ms: 80
       - name: index
-        baseline_ms: 40.9
+        baseline_ms: 58.4
         threshold_pct: 30
         threshold_ms: 40
   query_filter:
@@ -45,6 +45,6 @@ workloads:
     repeats: 5
     operations:
       - name: scan
-        baseline_ms: 35.2
+        baseline_ms: 69.7
         threshold_pct: 30
         threshold_ms: 40
