@@ -9,8 +9,8 @@ jobs:
   remeasure:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - name: Install
@@ -33,7 +33,7 @@ jobs:
             --manifest demo_service/hotspot-manifest.yaml \
             --output results/nightly-report.md
       - name: Upload nightly artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: nightly-baselines
           path: results/
