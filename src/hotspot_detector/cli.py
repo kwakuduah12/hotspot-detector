@@ -9,11 +9,17 @@ from pathlib import Path
 import typer
 import yaml
 
-from hotspot_detector.compare import compare_run
+from hotspot_detector.ab import (
+    git_rev_parse,
+    last_good_worktree,
+    resolve_merge_base,
+    short_sha,
+)
+from hotspot_detector.compare import compare_run, compare_runs
 from hotspot_detector.manifest import load_baselines, load_manifest
 from hotspot_detector.matcher import evaluate_pr_diff
-from hotspot_detector.report import render_markdown
-from hotspot_detector.runner import run_workloads
+from hotspot_detector.report import render_ab_dry_run, render_markdown
+from hotspot_detector.runner import is_dry_run, run_workloads
 
 app = typer.Typer(no_args_is_help=True, add_completion=False)
 
@@ -30,6 +36,10 @@ def _read_changed_files(path: Path) -> list[str]:
         data = json.loads(text)
         return [str(item) for item in data]
     return [line.strip() for line in text.splitlines() if line.strip()]
+
+
+def _manifest_relative(manifest: Path, repo_root: Path) -> Path:
+    return manifest.resolve().relative_to(repo_root.resolve())
 
 
 def _write_json(path: Path | None, payload: dict) -> None:
@@ -99,13 +109,23 @@ def compare(
     run: Path = typer.Option(..., exists=True, dir_okay=False),
     manifest: Path = typer.Option(..., exists=True, dir_okay=False),
     baselines: Path | None = typer.Option(None, exists=True, dir_okay=False),
+    last_good: Path | None = typer.Option(
+        None,
+        "--last-good",
+        exists=True,
+        dir_okay=False,
+        help="Run JSON from the merge-base. Preferred over --baselines.",
+    ),
     output: Path | None = typer.Option(None, "--output", "-o"),
 ) -> None:
-    """Compare a run against baselines and thresholds."""
+    """Compare a run against last-good (same env) or a stored baseline snapshot."""
     loaded = load_manifest(manifest)
-    captured = load_baselines(baselines) if baselines else None
     run_payload = json.loads(run.read_text())
-    result = compare_run(run_payload, loaded, captured)
+    if last_good is not None:
+        result = compare_runs(json.loads(last_good.read_text()), run_payload, loaded)
+    else:
+        captured = load_baselines(baselines) if baselines else None
+        result = compare_run(run_payload, loaded, captured)
     _write_json(output, result.to_dict())
 
 
@@ -125,6 +145,9 @@ def report(
     compare_result = CompareResult(
         overall=compare_payload["overall"],
         operations=[OperationResult(**row) for row in compare_payload["operations"]],
+        mode=compare_payload.get("mode", "baseline"),
+        last_good_sha=compare_payload.get("last_good_sha"),
+        first_bad_sha=compare_payload.get("first_bad_sha"),
     )
     markdown = render_markdown(
         compare_result,
@@ -141,6 +164,11 @@ def gate(
     manifest: Path = typer.Option(..., exists=True, dir_okay=False),
     changed_files: Path = typer.Option(..., "--changed-files", exists=True, dir_okay=False),
     baselines: Path | None = typer.Option(None, exists=True, dir_okay=False),
+    base_ref: str | None = typer.Option(
+        None,
+        "--base-ref",
+        help="Git ref for last good (merge-base). Runs base then this PR in the same env.",
+    ),
     results_dir: Path = typer.Option(Path("results")),
     no_docker: bool = typer.Option(False, "--no-docker"),
     strict: bool = typer.Option(
@@ -150,24 +178,97 @@ def gate(
     ),
 ) -> None:
     """Match, run, compare, and report. Quiet-skips when nothing matches."""
-    loaded = load_manifest(manifest)
+    repo_root = _repo_root()
     files = _read_changed_files(changed_files)
-    matched = evaluate_pr_diff(files, loaded)
     results_dir.mkdir(parents=True, exist_ok=True)
+    run_path = results_dir / "run.json"
+    last_good_path = results_dir / "last_good.json"
+    compare_path = results_dir / "compare.json"
+    report_path = results_dir / "report.md"
+
+    if base_ref:
+        last_good_sha = resolve_merge_base(repo_root, base_ref)
+        first_bad_sha = git_rev_parse(repo_root, "HEAD")
+        rel = _manifest_relative(manifest, repo_root)
+        with last_good_worktree(repo_root, last_good_sha) as worktree:
+            harness = load_manifest(worktree / rel)
+            matched = evaluate_pr_diff(files, harness)
+            (results_dir / "match.json").write_text(
+                json.dumps(matched.to_dict(), indent=2) + "\n"
+            )
+            if not matched.trigger:
+                typer.echo("No hotspot files changed; skipping workloads.")
+                raise typer.Exit(0)
+
+            last_good = run_workloads(
+                harness,
+                matched.workloads,
+                repo_root=worktree,
+                output_path=last_good_path,
+                prefer_docker=not no_docker,
+                compose_project="hotspotlg",
+                role="last_good",
+                git_sha=last_good_sha,
+            )
+            first_bad = run_workloads(
+                harness,
+                matched.workloads,
+                repo_root=repo_root,
+                harness_root=worktree,
+                output_path=run_path,
+                prefer_docker=not no_docker,
+                compose_project="hotspotfb",
+                role="first_bad",
+                git_sha=first_bad_sha,
+            )
+            first_bad["matched_files"] = matched.matched_files
+            first_bad["hotspots"] = matched.hotspots
+            run_path.write_text(json.dumps(first_bad, indent=2) + "\n")
+
+            if is_dry_run() or last_good.get("dry_run") or first_bad.get("dry_run"):
+                markdown = render_ab_dry_run(
+                    harness,
+                    matched_files=matched.matched_files,
+                    workloads=matched.workloads,
+                    last_good_sha=short_sha(repo_root, last_good_sha),
+                    first_bad_sha=short_sha(repo_root, first_bad_sha),
+                )
+                report_path.write_text(markdown)
+                typer.echo(markdown, nl=False)
+                raise typer.Exit(0)
+
+            compared = compare_runs(
+                last_good,
+                first_bad,
+                harness,
+                last_good_sha=short_sha(repo_root, last_good_sha),
+                first_bad_sha=short_sha(repo_root, first_bad_sha),
+            )
+            compare_path.write_text(json.dumps(compared.to_dict(), indent=2) + "\n")
+            markdown = render_markdown(
+                compared,
+                harness,
+                matched_files=matched.matched_files,
+                workloads=matched.workloads,
+            )
+            report_path.write_text(markdown)
+            typer.echo(markdown, nl=False)
+            if strict and compared.overall in {"regression", "error"}:
+                raise typer.Exit(1)
+            raise typer.Exit(0)
+
+    loaded = load_manifest(manifest)
+    matched = evaluate_pr_diff(files, loaded)
     (results_dir / "match.json").write_text(json.dumps(matched.to_dict(), indent=2) + "\n")
 
     if not matched.trigger:
         typer.echo("No hotspot files changed; skipping workloads.")
         raise typer.Exit(0)
 
-    run_path = results_dir / "run.json"
-    compare_path = results_dir / "compare.json"
-    report_path = results_dir / "report.md"
-
     run_payload = run_workloads(
         loaded,
         matched.workloads,
-        repo_root=_repo_root(),
+        repo_root=repo_root,
         output_path=run_path,
         prefer_docker=not no_docker,
     )

@@ -70,11 +70,17 @@ class OperationResult:
 class CompareResult:
     overall: str
     operations: list[OperationResult]
+    mode: str = "baseline"
+    last_good_sha: str | None = None
+    first_bad_sha: str | None = None
 
     def to_dict(self) -> dict:
         return {
             "overall": self.overall,
             "operations": [op.to_dict() for op in self.operations],
+            "mode": self.mode,
+            "last_good_sha": self.last_good_sha,
+            "first_bad_sha": self.first_bad_sha,
         }
 
 
@@ -202,3 +208,49 @@ def compare_run(
         overall = max((op.status for op in results), key=lambda s: RANK.get(s, 0))
 
     return CompareResult(overall=overall, operations=results)
+
+
+def baselines_from_run(run: dict) -> BaselineCapture:
+    """Treat a completed run's medians as a baseline snapshot."""
+    operations: dict[str, dict[str, dict[str, float]]] = {}
+    medians = run.get("medians") or {}
+    if medians:
+        for workload_id, ops in medians.items():
+            operations[str(workload_id)] = {
+                str(name): {"baseline_ms": float(value)} for name, value in ops.items()
+            }
+    else:
+        for workload_id, samples_by_op in run.get("workloads", {}).items():
+            operations[str(workload_id)] = {}
+            for name, samples in samples_by_op.items():
+                values = [float(item) for item in samples]
+                if values:
+                    operations[str(workload_id)][str(name)] = {
+                        "baseline_ms": median(values)
+                    }
+
+    environment = run.get("environment")
+    if not isinstance(environment, dict):
+        environment = {"runtime": environment} if environment else {}
+
+    return BaselineCapture(
+        service_area=run.get("service_area"),
+        environment=environment,
+        operations=operations,
+    )
+
+
+def compare_runs(
+    last_good: dict,
+    first_bad: dict,
+    manifest: Manifest,
+    *,
+    last_good_sha: str | None = None,
+    first_bad_sha: str | None = None,
+) -> CompareResult:
+    """Compare this PR (first-bad) against a same-env last-good run."""
+    result = compare_run(first_bad, manifest, baselines_from_run(last_good))
+    result.mode = "ab"
+    result.last_good_sha = last_good_sha or last_good.get("git_sha")
+    result.first_bad_sha = first_bad_sha or first_bad.get("git_sha")
+    return result

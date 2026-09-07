@@ -47,4 +47,4 @@ Observed (local CPython 3.13, 1200 records, `HASH_ROUNDS=256`):
 
 ## Thresholds
 
-Each operation has `threshold_pct` and `threshold_ms`. A result is a **regression** if the median exceeds the baseline by *either* bound, and a **warning** at half those bounds. After two captures on the same machine swung ~25% on serialize, demo-platform thresholds were tuned to 30% (and 80ms on serialize) so ordinary noise does not page. Product PRs never fail closed; `perf.yml` is `continue-on-error: true`.
+Each operation has `threshold_pct` and `threshold_ms`. On a PR, last good is the merge-base median and this PR is the candidate. A result is a **regression** if the median exceeds last good by *either* bound, and a **warning** at half those bounds. After two captures on the same machine swung ~25% on serialize, demo-platform thresholds were tuned to 30% (and 80ms on serialize) so ordinary noise does not page. Product PRs never fail closed; `perf.yml` is `continue-on-error: true`. The comment names a first-bad PR; it does not mark the PR unmergeable.

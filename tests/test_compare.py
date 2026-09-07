@@ -1,6 +1,12 @@
 import pytest
 
-from hotspot_detector.compare import classify, compare_run, median
+from hotspot_detector.compare import (
+    baselines_from_run,
+    classify,
+    compare_run,
+    compare_runs,
+    median,
+)
 from hotspot_detector.manifest import BaselineCapture, Manifest, OperationSpec, WorkloadSpec
 
 
@@ -118,3 +124,36 @@ def test_empty_run_is_error():
     result = compare_run({"workloads": {}}, _manifest())
     assert result.overall == "error"
     assert result.operations == []
+
+
+def test_baselines_from_run_uses_medians():
+    captured = baselines_from_run(
+        {"medians": {"w": {"op": 50.0}}, "environment": "docker"}
+    )
+    assert captured.operations["w"]["op"]["baseline_ms"] == 50.0
+    assert captured.environment["runtime"] == "docker"
+
+
+def test_baselines_from_run_falls_back_to_samples():
+    captured = baselines_from_run({"workloads": {"w": {"op": [10.0, 20.0, 30.0]}}})
+    assert captured.operations["w"]["op"]["baseline_ms"] == 20.0
+
+
+def test_compare_runs_marks_first_bad_regression():
+    last_good = {"workloads": {"w": {"op": [100.0, 100.0, 100.0]}}, "git_sha": "aaa"}
+    first_bad = {"workloads": {"w": {"op": [160.0, 155.0, 150.0]}}, "git_sha": "bbb"}
+    result = compare_runs(last_good, first_bad, _manifest())
+    assert result.mode == "ab"
+    assert result.overall == "regression"
+    assert result.last_good_sha == "aaa"
+    assert result.first_bad_sha == "bbb"
+    assert result.operations[0].baseline_ms == 100.0
+    assert result.operations[0].current_ms == 155.0
+
+
+def test_compare_runs_ok_when_pr_matches_last_good():
+    run = {"workloads": {"w": {"op": [98.0, 100.0, 102.0]}}}
+    result = compare_runs(run, run, _manifest(), last_good_sha="g", first_bad_sha="b")
+    assert result.overall == "ok"
+    assert result.last_good_sha == "g"
+    assert result.first_bad_sha == "b"

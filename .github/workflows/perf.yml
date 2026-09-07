@@ -36,7 +36,7 @@ jobs:
           hotspot-detector gate \
             --manifest demo_service/hotspot-manifest.yaml \
             --changed-files /tmp/changed.txt \
-            --baselines demo_service/baselines.yaml \
+            --base-ref "origin/${{ github.base_ref }}" \
             --results-dir results
           python - <<'PY'
           import json, os, pathlib

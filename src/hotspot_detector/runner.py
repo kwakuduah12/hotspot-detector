@@ -41,18 +41,26 @@ def wait_for_health(base_url: str, timeout: float = 40.0) -> None:
     raise RuntimeError(f"service at {base_url} did not become healthy: {last_error}")
 
 
-def _compose_up(repo_root: Path) -> None:
+def _compose_env(project: str) -> dict[str, str]:
+    env = os.environ.copy()
+    env["COMPOSE_PROJECT_NAME"] = project
+    return env
+
+
+def _compose_up(repo_root: Path, project: str = "hotspot") -> None:
     subprocess.run(
         ["docker", "compose", "up", "-d", "--build"],
         cwd=repo_root,
+        env=_compose_env(project),
         check=True,
     )
 
 
-def _compose_down(repo_root: Path) -> None:
+def _compose_down(repo_root: Path, project: str = "hotspot") -> None:
     subprocess.run(
         ["docker", "compose", "down"],
         cwd=repo_root,
+        env=_compose_env(project),
         check=False,
     )
 
@@ -132,7 +140,16 @@ def run_workloads(
     repo_root: Path,
     output_path: Path,
     prefer_docker: bool = True,
+    harness_root: Path | None = None,
+    compose_project: str = "hotspot",
+    role: str | None = None,
+    git_sha: str | None = None,
 ) -> dict:
+    """Run workloads against *repo_root* (the service under test).
+
+    *harness_root* is the tree that supplies workload commands. For last-good
+    vs first-bad, pass the merge-base worktree so a PR cannot shrink N.
+    """
     base_url = os.environ.get("HOTSPOT_BASE_URL", DEFAULT_BASE_URL)
     port = int(os.environ.get("HOTSPOT_PORT", "8000"))
     if "HOTSPOT_BASE_URL" not in os.environ:
@@ -149,15 +166,28 @@ def run_workloads(
             }
         )
 
+    command_root = harness_root or repo_root
+
+    def _annotate(payload: dict) -> dict:
+        if role:
+            payload["role"] = role
+        if git_sha:
+            payload["git_sha"] = git_sha
+        payload["sut_root"] = str(repo_root)
+        payload["harness_root"] = str(command_root)
+        return payload
+
     if is_dry_run():
-        payload = {
-            "dry_run": True,
-            "service_area": manifest.service_area,
-            "base_url": base_url,
-            "would_provision": "docker" if prefer_docker and docker_available() else "local",
-            "workloads": {item["id"]: {} for item in plan},
-            "plan": plan,
-        }
+        payload = _annotate(
+            {
+                "dry_run": True,
+                "service_area": manifest.service_area,
+                "base_url": base_url,
+                "would_provision": "docker" if prefer_docker and docker_available() else "local",
+                "workloads": {item["id"]: {} for item in plan},
+                "plan": plan,
+            }
+        )
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_text(json.dumps(payload, indent=2) + "\n")
         return payload
@@ -166,23 +196,25 @@ def run_workloads(
     local_proc: subprocess.Popen | None = None
     try:
         if used_docker:
-            _compose_up(repo_root)
+            _compose_up(repo_root, compose_project)
         else:
             local_proc = _start_local(repo_root, port)
         wait_for_health(base_url)
 
-        run_payload: dict = {
-            "dry_run": False,
-            "service_area": manifest.service_area,
-            "base_url": base_url,
-            "environment": "docker" if used_docker else "local",
-            "workloads": {},
-            "medians": {},
-        }
+        run_payload: dict = _annotate(
+            {
+                "dry_run": False,
+                "service_area": manifest.service_area,
+                "base_url": base_url,
+                "environment": "docker" if used_docker else "local",
+                "workloads": {},
+                "medians": {},
+            }
+        )
         for item in plan:
             samples = run_workload_command(
                 item["command"],
-                repo_root=repo_root,
+                repo_root=command_root,
                 base_url=base_url,
                 repeats=item["repeats"],
             )
@@ -196,7 +228,7 @@ def run_workloads(
         return run_payload
     finally:
         if used_docker:
-            _compose_down(repo_root)
+            _compose_down(repo_root, compose_project)
         if local_proc is not None:
             local_proc.terminate()
             try:
