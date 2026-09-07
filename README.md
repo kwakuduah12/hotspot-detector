@@ -1,6 +1,6 @@
 # hotspot-detector
 
-Event-driven performance testing. When a pull request touches code that is known to be performance-sensitive, run only the workloads that exercise those paths, compare operation runtimes to stored baselines, and post a **non-blocking** report.
+Event-driven performance testing. When a pull request touches code that is known to be performance-sensitive, run only the workloads that exercise those paths, compare this PR to a **last-good** run of the merge-base in the same CI environment, and post a **non-blocking** report.
 
 Scheduled nightly runs remain the backstop. This tool adds a targeted signal at PR time.
 
@@ -31,6 +31,15 @@ hotspot-detector run \
   --output run.json
 ```
 
+Compare this PR to last good (merge-base) in one environment:
+
+```bash
+hotspot-detector gate \
+  --manifest demo_service/hotspot-manifest.yaml \
+  --changed-files /tmp/changed.txt \
+  --base-ref origin/main
+```
+
 Dry-run (print the plan, do not provision):
 
 ```bash
@@ -50,4 +59,4 @@ HOTSPOT_DRY_RUN=1 hotspot-detector run \
 
 ## Docs-only PRs
 
-Changes under `docs/**`, `**/*.md`, and `tests/**` are excluded. The gate prints a skip and exits 0 with no comment.
+Changes under `docs/**`, `**/*.md`, and `tests/**` are excluded. Comment, docstring, or whitespace-only edits to a hotspot `.py` file are also skipped when `gate`/`match` has `--base-ref`. The gate prints a skip and exits 0 with no comment.
