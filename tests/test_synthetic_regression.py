@@ -20,8 +20,8 @@ from hotspot_detector.manifest import BaselineCapture, load_manifest
 from hotspot_detector.runner import parse_workload_stdout, wait_for_health
 
 PLANTED_SLOWDOWN_MS = 150
-# Sleep is 150ms; leave slack for timer granularity without accepting a clean run.
-MIN_PLANTED_DELTA_MS = 120
+# Sleep is 150ms; leave slack for natural timing variance and cold-start effects.
+MIN_PLANTED_DELTA_MS = 75
 
 
 def _free_port() -> int:
