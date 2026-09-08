@@ -49,6 +49,11 @@ That script starts the demo service with `HOTSPOT_SLOWDOWN_MS=150` and expects `
 
 A docs-only change (`docs/**`, `**/*.md`, `tests/**`) matches nothing and the gate exits 0 without posting a comment. The same skip applies to comment, docstring, or whitespace-only edits in a hotspot `.py` file (compared to `--base-ref`).
 
+## Recorded CI proofs
+
+- **First-bad / synthetic regression:** closed [PR #2](https://github.com/kwakuduah12/hotspot-detector/pull/2) planted a 150ms serialize sleep. The gate posted `regression`. Do not merge that change.
+- **Docs-only quiet skip:** this PR. `perf.yml` should list only markdown, print a skip, and post no sticky comment.
+
 ## Shadow snippet (second area)
 
 `demo_service/candidates.yaml` is the export path: identified, not live. To onboard it, add an `export_jsonl` workload, capture a `scan`-style baseline, and move the hotspot entry into the active manifest. No CLI changes.
