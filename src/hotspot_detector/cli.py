@@ -50,7 +50,7 @@ def _cosmetic_checker(repo_root: Path, base_sha: str):
     return check
 
 
-def _skip_if_quiet(matched: MatchResult) -> None:
+def _skip_if_quiet(matched: MatchResult, report_path: Path | None = None) -> None:
     reason = matched.skip_reason()
     if reason is None:
         return
@@ -216,7 +216,14 @@ def gate(
         first_bad_sha = git_rev_parse(repo_root, "HEAD")
         rel = _manifest_relative(manifest, repo_root)
         with last_good_worktree(repo_root, last_good_sha) as worktree:
-            harness = load_manifest(worktree / rel)
+            manifest_at_base = worktree / rel
+            if not manifest_at_base.exists():
+                (results_dir / "match.json").write_text(
+                    json.dumps({"trigger": False, "workloads": [], "matched_files": [], "hotspots": []}, indent=2) + "\n"
+                )
+                typer.echo(f"Manifest {rel} not present at base; skipping hotspot check.")
+                raise typer.Exit(0)
+            harness = load_manifest(manifest_at_base)
             matched = evaluate_pr_diff(
                 files,
                 harness,
@@ -225,7 +232,7 @@ def gate(
             (results_dir / "match.json").write_text(
                 json.dumps(matched.to_dict(), indent=2) + "\n"
             )
-            _skip_if_quiet(matched)
+            _skip_if_quiet(matched, report_path)
 
             last_good = run_workloads(
                 harness,
@@ -287,7 +294,7 @@ def gate(
     loaded = load_manifest(manifest)
     matched = evaluate_pr_diff(files, loaded)
     (results_dir / "match.json").write_text(json.dumps(matched.to_dict(), indent=2) + "\n")
-    _skip_if_quiet(matched)
+    _skip_if_quiet(matched, report_path)
 
     run_payload = run_workloads(
         loaded,
