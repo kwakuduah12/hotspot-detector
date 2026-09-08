@@ -54,13 +54,6 @@ def _skip_if_quiet(matched: MatchResult, report_path: Path | None = None) -> Non
     reason = matched.skip_reason()
     if reason is None:
         return
-    if report_path is not None:
-        skip_report = (
-            "<!-- hotspot-detector-report -->\n\n"
-            "## Hotspot detector: skipped\n\n"
-            f"{reason}\n"
-        )
-        report_path.write_text(skip_report)
     typer.echo(reason)
     raise typer.Exit(0)
 
@@ -225,6 +218,9 @@ def gate(
         with last_good_worktree(repo_root, last_good_sha) as worktree:
             manifest_at_base = worktree / rel
             if not manifest_at_base.exists():
+                (results_dir / "match.json").write_text(
+                    json.dumps({"trigger": False, "workloads": [], "matched_files": [], "hotspots": []}, indent=2) + "\n"
+                )
                 typer.echo(f"Manifest {rel} not present at base; skipping hotspot check.")
                 raise typer.Exit(0)
             harness = load_manifest(manifest_at_base)
