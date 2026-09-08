@@ -8,8 +8,6 @@ Plant a synthetic regression with:
   HOTSPOT_SLOWDOWN_ROUNDS extra sha256 rounds per record
 
 This file is a hotspot: PRs that touch it should trigger ingest_bulk.
-
-This PR exercises last-good vs this PR in the same CI job.
 """
 
 from __future__ import annotations
