@@ -10,12 +10,18 @@ import os
 import socket
 import subprocess
 import sys
+from collections.abc import Iterator
+from contextlib import contextmanager
 
 import pytest
 
-from hotspot_detector.compare import compare_run
+from hotspot_detector.compare import compare_run, median
 from hotspot_detector.manifest import BaselineCapture, load_manifest
 from hotspot_detector.runner import parse_workload_stdout, wait_for_health
+
+PLANTED_SLOWDOWN_MS = 150
+# Sleep is 150ms; leave slack for timer granularity without accepting a clean run.
+MIN_PLANTED_DELTA_MS = 120
 
 
 def _free_port() -> int:
@@ -26,14 +32,15 @@ def _free_port() -> int:
     return port
 
 
-@pytest.fixture
-def slow_server(repo_root):
+@contextmanager
+def _demo_server(repo_root, extra_env: dict[str, str] | None = None) -> Iterator[str]:
     port = _free_port()
     env = os.environ.copy()
-    env["HOTSPOT_SLOWDOWN_MS"] = "150"
     env["PYTHONPATH"] = os.pathsep.join(
         [str(repo_root), str(repo_root / "src"), env.get("PYTHONPATH", "")]
     )
+    if extra_env:
+        env.update(extra_env)
     proc = subprocess.Popen(
         [
             sys.executable,
@@ -62,10 +69,9 @@ def slow_server(repo_root):
             proc.kill()
 
 
-@pytest.mark.integration
-def test_planted_slowdown_is_regression(slow_server, repo_root, manifest_path):
+def _ingest_samples(base_url: str, repo_root) -> dict[str, list[float]]:
     env = os.environ.copy()
-    env["HOTSPOT_BASE_URL"] = slow_server
+    env["HOTSPOT_BASE_URL"] = base_url
     env["PYTHONPATH"] = os.pathsep.join(
         [str(repo_root), str(repo_root / "src"), env.get("PYTHONPATH", "")]
     )
@@ -78,23 +84,34 @@ def test_planted_slowdown_is_regression(slow_server, repo_root, manifest_path):
         text=True,
         timeout=60,
     )
-    rows = parse_workload_stdout(completed.stdout)
     samples: dict[str, list[float]] = {}
-    for row in rows:
+    for row in parse_workload_stdout(completed.stdout):
         samples.setdefault(row["operation"], []).append(float(row["duration_ms"]))
+    return samples
 
-    run = {"workloads": {"ingest_bulk": samples}}
+
+@pytest.mark.integration
+def test_planted_slowdown_is_regression(repo_root, manifest_path):
+    with _demo_server(repo_root) as clean_url:
+        clean = _ingest_samples(clean_url, repo_root)
+    with _demo_server(repo_root, {"HOTSPOT_SLOWDOWN_MS": str(PLANTED_SLOWDOWN_MS)}) as slow_url:
+        planted = _ingest_samples(slow_url, repo_root)
+
     last_good = BaselineCapture(
         operations={
             "ingest_bulk": {
-                "serialize": {"baseline_ms": 100.0},
-                "index": {"baseline_ms": 50.0},
+                name: {"baseline_ms": median(values)} for name, values in clean.items()
             }
         }
     )
-    compared = compare_run(run, load_manifest(manifest_path), last_good)
+    compared = compare_run(
+        {"workloads": {"ingest_bulk": planted}},
+        load_manifest(manifest_path),
+        last_good,
+    )
     serialize = next(op for op in compared.operations if op.operation == "serialize")
     assert serialize.status == "regression"
     assert serialize.current_ms is not None
-    assert serialize.current_ms >= 150
+    assert serialize.baseline_ms is not None
+    assert serialize.current_ms >= serialize.baseline_ms + MIN_PLANTED_DELTA_MS
     assert compared.overall == "regression"
