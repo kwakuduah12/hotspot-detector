@@ -15,8 +15,8 @@ from contextlib import contextmanager
 
 import pytest
 
-from hotspot_detector.compare import compare_run, median
-from hotspot_detector.manifest import BaselineCapture, load_manifest
+from hotspot_detector.compare import compare_runs
+from hotspot_detector.manifest import load_manifest
 from hotspot_detector.runner import parse_workload_stdout, wait_for_health
 
 PLANTED_SLOWDOWN_MS = 150
@@ -97,17 +97,10 @@ def test_planted_slowdown_is_regression(repo_root, manifest_path):
     with _demo_server(repo_root, {"HOTSPOT_SLOWDOWN_MS": str(PLANTED_SLOWDOWN_MS)}) as slow_url:
         planted = _ingest_samples(slow_url, repo_root)
 
-    last_good = BaselineCapture(
-        operations={
-            "ingest_bulk": {
-                name: {"baseline_ms": median(values)} for name, values in clean.items()
-            }
-        }
-    )
-    compared = compare_run(
+    compared = compare_runs(
+        {"workloads": {"ingest_bulk": clean}},
         {"workloads": {"ingest_bulk": planted}},
         load_manifest(manifest_path),
-        last_good,
     )
     serialize = next(op for op in compared.operations if op.operation == "serialize")
     assert serialize.status == "regression"

@@ -1,6 +1,6 @@
 # Baseline metrics
 
-Baselines are median operation runtimes from the test environment, stored in [`demo_service/baselines.yaml`](../demo_service/baselines.yaml). The manifest also carries `baseline_ms` as a fallback; `compare` prefers the YAML snapshot when `--baselines` is passed.
+PR compares are **last good vs this PR**, both measured in the same CI job. Last good is the merge-base (`main`) built and timed first; this PR is timed second with the same workload commands from that merge-base. Stored [`demo_service/baselines.yaml`](../demo_service/baselines.yaml) is a fallback for local `gate` without `--base-ref`. The manifest `baseline_ms` fields are a last-resort fallback.
 
 ## Capture procedure
 
@@ -14,7 +14,7 @@ That is the same Docker Compose stack `perf.yml` uses. Add `--no-docker` only fo
 
 Each workload runs `repeats` times (5). The comparator uses the **median** of those samples. Thresholds were widened to 30% after capture-to-capture serialize variance of ~25% on the same laptop.
 
-Checked-in numbers come from GitHub Actions (`ubuntu-latest`, `python:3.12-slim` via Compose). Recapture with **Actions → capture-baselines → Run workflow** (or `gh workflow run capture-baselines.yml`) and commit the artifact; do not hand-edit medians.
+`perf.yml` does not read the checked-in snapshot. It runs `gate --base-ref origin/<base>` so both sides use `ubuntu-latest` and the same Compose stack. Use `capture` / `baselines.yaml` for local `--no-docker` compares and as the nightly floor.
 
 ## Environment (CI capture)
 

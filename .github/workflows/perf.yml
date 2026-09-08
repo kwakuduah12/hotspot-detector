@@ -13,11 +13,11 @@ jobs:
     runs-on: ubuntu-latest
     continue-on-error: true
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
 
@@ -36,7 +36,7 @@ jobs:
           hotspot-detector gate \
             --manifest demo_service/hotspot-manifest.yaml \
             --changed-files /tmp/changed.txt \
-            --baselines demo_service/baselines.yaml \
+            --base-ref "origin/${{ github.base_ref }}" \
             --results-dir results
           python - <<'PY'
           import json, os, pathlib
@@ -48,7 +48,7 @@ jobs:
 
       - name: Upload run artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: hotspot-results
           path: results/
@@ -56,7 +56,7 @@ jobs:
 
       - name: Post sticky PR comment
         if: hashFiles('results/report.md') != ''
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             const fs = require('fs');

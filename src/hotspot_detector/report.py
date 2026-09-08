@@ -5,6 +5,16 @@ from __future__ import annotations
 from hotspot_detector.compare import CompareResult
 from hotspot_detector.manifest import Manifest
 
+VERDICTS = {
+    "ok": "This PR matches last good on the merge-base.",
+    "warning": "This PR is slower than last good, below the regression bar.",
+    "regression": (
+        "This PR is first-bad vs last good. Review the delta before merge; "
+        "this check does not block."
+    ),
+    "error": "The compare did not finish (missing samples or a workload crash).",
+}
+
 
 def format_ms(value: float | None) -> str:
     if value is None:
@@ -19,20 +29,26 @@ def format_pct(value: float | None) -> str:
     return f"{sign}{value:.1f}%"
 
 
-def render_markdown(
-    compare: CompareResult,
+def render_ab_dry_run(
     manifest: Manifest,
     *,
-    matched_files: list[str] | None = None,
-    workloads: list[str] | None = None,
+    matched_files: list[str],
+    workloads: list[str],
+    last_good_sha: str | None,
+    first_bad_sha: str | None,
 ) -> str:
     lines = [
         "<!-- hotspot-detector-report -->",
         "## Performance regression report",
         "",
         f"**Service area:** `{manifest.service_area}`",
-        f"**Overall:** `{compare.overall}`",
+        "**Overall:** `dry_run`",
+        "**Mode:** last good (merge-base) vs this PR",
     ]
+    if last_good_sha:
+        lines.append(f"**Last good:** `{last_good_sha}`")
+    if first_bad_sha:
+        lines.append(f"**This PR:** `{first_bad_sha}`")
     if workloads:
         lines.append(f"**Workloads:** {', '.join(f'`{w}`' for w in workloads)}")
     if matched_files:
@@ -42,7 +58,57 @@ def render_markdown(
     lines.extend(
         [
             "",
-            "| Workload | Operation | Baseline | Current | Delta | Status |",
+            "Dry-run: would measure last good, then this PR, then compare. No timings collected.",
+            "",
+            "_This check is informational and does not block merge._",
+            "",
+        ]
+    )
+    return "\n".join(lines)
+
+
+def verdict_line(compare: CompareResult) -> str:
+    if compare.mode != "ab":
+        return ""
+    return VERDICTS.get(compare.overall, VERDICTS["error"])
+
+
+def render_markdown(
+    compare: CompareResult,
+    manifest: Manifest,
+    *,
+    matched_files: list[str] | None = None,
+    workloads: list[str] | None = None,
+) -> str:
+    ab = compare.mode == "ab"
+    baseline_col = "Last good" if ab else "Baseline"
+    current_col = "This PR" if ab else "Current"
+    lines = [
+        "<!-- hotspot-detector-report -->",
+        "## Performance regression report",
+        "",
+        f"**Service area:** `{manifest.service_area}`",
+        f"**Overall:** `{compare.overall}`",
+    ]
+    if ab:
+        lines.append("**Mode:** last good (merge-base) vs this PR")
+        if compare.last_good_sha:
+            lines.append(f"**Last good:** `{compare.last_good_sha}`")
+        if compare.first_bad_sha:
+            lines.append(f"**This PR:** `{compare.first_bad_sha}`")
+    if workloads:
+        lines.append(f"**Workloads:** {', '.join(f'`{w}`' for w in workloads)}")
+    if matched_files:
+        lines.append("**Matched files:**")
+        for path in matched_files:
+            lines.append(f"- `{path}`")
+    verdict = verdict_line(compare)
+    if verdict:
+        lines.extend(["", verdict])
+    lines.extend(
+        [
+            "",
+            f"| Workload | Operation | {baseline_col} | {current_col} | Delta | Status |",
             "|---|---|---:|---:|---:|---|",
         ]
     )

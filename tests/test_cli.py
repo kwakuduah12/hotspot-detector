@@ -103,6 +103,33 @@ def test_match_cli_json_array(tmp_path, runner, manifest_path):
     assert payload["workloads"] == ["query_filter"]
 
 
+def test_gate_comment_only_hotspot_skips(tmp_path, runner, manifest_path):
+    changed = tmp_path / "changed.txt"
+    changed.write_text("demo_service/app/ingest.py\n")
+    results_dir = tmp_path / "results"
+    result = runner.invoke(
+        app,
+        [
+            "gate",
+            "--manifest",
+            str(manifest_path),
+            "--changed-files",
+            str(changed),
+            "--base-ref",
+            "HEAD",
+            "--results-dir",
+            str(results_dir),
+            "--no-docker",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    assert "comments, docstrings, or whitespace" in result.output
+    match = json.loads((results_dir / "match.json").read_text())
+    assert match["trigger"] is False
+    assert "demo_service/app/ingest.py" in match["cosmetic_files"]
+    assert not (results_dir / "run.json").exists()
+
+
 def test_gate_docs_only_skips_without_running(tmp_path, runner, manifest_path):
     changed = tmp_path / "changed.txt"
     changed.write_text("README.md\n")
@@ -152,6 +179,83 @@ def test_gate_dry_run_hotspot_writes_report(
     assert run_payload["dry_run"] is True
     assert (results_dir / "compare.json").exists()
     assert (results_dir / "report.md").exists()
+
+
+def test_gate_base_ref_dry_run(tmp_path, runner, manifest_path, monkeypatch):
+    monkeypatch.setenv("HOTSPOT_DRY_RUN", "1")
+    monkeypatch.setattr(
+        "hotspot_detector.cli.is_cosmetic_path",
+        lambda *_args, **_kwargs: False,
+    )
+    changed = tmp_path / "changed.txt"
+    changed.write_text("demo_service/app/ingest.py\n")
+    results_dir = tmp_path / "results"
+    result = runner.invoke(
+        app,
+        [
+            "gate",
+            "--manifest",
+            str(manifest_path),
+            "--changed-files",
+            str(changed),
+            "--base-ref",
+            "HEAD",
+            "--results-dir",
+            str(results_dir),
+            "--no-docker",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    last_good = json.loads((results_dir / "last_good.json").read_text())
+    first_bad = json.loads((results_dir / "run.json").read_text())
+    assert last_good["role"] == "last_good"
+    assert first_bad["role"] == "first_bad"
+    assert last_good["harness_root"] == last_good["sut_root"]
+    assert first_bad["harness_root"] != first_bad["sut_root"]
+    report = (results_dir / "report.md").read_text()
+    assert "last good" in report.lower()
+    assert "dry_run" in report
+
+
+def test_compare_cli_last_good(tmp_path, runner, manifest_path):
+    last_good = tmp_path / "last_good.json"
+    last_good.write_text(
+        json.dumps({"workloads": {"ingest_bulk": {"serialize": [260.0], "index": [58.0]}}})
+    )
+    run_path = tmp_path / "run.json"
+    run_path.write_text(
+        json.dumps(
+            {
+                "workloads": {
+                    "ingest_bulk": {
+                        "serialize": [410.0, 400.0, 405.0],
+                        "index": [54.0, 55.0, 53.0],
+                    }
+                }
+            }
+        )
+    )
+    compare_path = tmp_path / "compare.json"
+    result = runner.invoke(
+        app,
+        [
+            "compare",
+            "--run",
+            str(run_path),
+            "--last-good",
+            str(last_good),
+            "--manifest",
+            str(manifest_path),
+            "--output",
+            str(compare_path),
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    compared = json.loads(compare_path.read_text())
+    assert compared["mode"] == "ab"
+    assert compared["overall"] == "regression"
+    serialize = next(op for op in compared["operations"] if op["operation"] == "serialize")
+    assert serialize["baseline_ms"] == 260.0
 
 
 def test_compare_and_report_cli(tmp_path, runner, manifest_path, baselines_path):

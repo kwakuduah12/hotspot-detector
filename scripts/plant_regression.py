@@ -1,8 +1,9 @@
-"""Plant a synthetic serialize regression for a test PR / local proof.
+"""Plant a synthetic serialize regression for a local proof.
 
 Does not modify source. Runs the gate with HOTSPOT_SLOWDOWN_MS=150 so
-serialize is deliberately slow. Exits 0 if the detector reports a
-regression; exits 1 if it misses it.
+serialize is deliberately slow against stored baselines. CI PRs use
+`--base-ref` (last good vs this PR) instead. Exits 0 if the detector
+reports a regression; exits 1 if it misses it.
 
 Usage:
   python scripts/plant_regression.py
