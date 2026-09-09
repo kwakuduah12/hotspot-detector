@@ -1,15 +1,21 @@
 service_area: demo-platform
-captured_at: '2026-09-09T18:55:58Z'
+captured_at: '2026-09-09T19:18:45Z'
 environment:
   runtime: docker
   base_url: http://127.0.0.1:8000
+  python: 3.12.14
+  machine: x86_64
+  system: Linux
 repeats: 5
 operations:
   ingest_bulk:
     serialize:
-      baseline_ms: 255.619
+      baseline_ms: 263.234
     index:
-      baseline_ms: 56.19
+      baseline_ms: 56.169
   query_filter:
     scan:
-      baseline_ms: 70.359
+      baseline_ms: 73.719
+  export_jsonl:
+    materialize:
+      baseline_ms: 136.976
