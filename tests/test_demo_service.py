@@ -5,7 +5,7 @@ from demo_service.workloads import export_jsonl as export_workload
 from demo_service.workloads import query_filter
 
 from demo_service.app.config import APP_NAME
-from demo_service.app.export import export_jsonl
+from demo_service.app.export import JSON_PASSES, _round_trip_json, export_jsonl
 from demo_service.app.health import health_payload
 from demo_service.app.index import index_records
 from demo_service.app.ingest import serialize_records
@@ -43,6 +43,9 @@ def test_serialize_index_query_export_roundtrip(store):
 
     exported = export_jsonl(store=store)
     assert exported.count("\n") == 40
+    first = exported.split("\n", 1)[0]
+    assert _round_trip_json(first) == first
+    assert JSON_PASSES == 12
 
 
 def test_query_without_tag_returns_all(store):
