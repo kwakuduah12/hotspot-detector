@@ -25,6 +25,12 @@ hotspots:
     workloads:
       - export_jsonl
     notes: "Allocation-heavy JSONL materialize; see docs/methodology.md"
+  - id: store-path
+    paths:
+      - "demo_service/app/store.py"
+    workloads:
+      - ingest_bulk
+    notes: "Shared in-memory store on the ingest path; see docs/methodology.md"
 workloads:
   ingest_bulk:
     description: Bulk ingest of N records through serialize then index

@@ -42,7 +42,7 @@ That script starts the demo service with `HOTSPOT_SLOWDOWN_MS=150` and expects `
 |---|---|
 | Manifest | `demo_service/hotspot-manifest.yaml` |
 | Baselines | `demo_service/baselines.yaml` |
-| Ingest hotspot | `demo_service/app/ingest.py`, `index.py` → `ingest_bulk` |
+| Ingest hotspot | `demo_service/app/ingest.py`, `index.py`, `store.py` → `ingest_bulk` |
 | Query hotspot | `demo_service/app/query.py` → `query_filter` |
 | Export hotspot | `demo_service/app/export.py` → `export_jsonl` |
 | Cold paths | `config.py`, `health.py` (not listed) |

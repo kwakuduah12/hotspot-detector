@@ -1,4 +1,7 @@
-"""In-memory record store shared by ingest, index, and query."""
+"""In-memory record store shared by ingest, index, and query.
+
+This file is a hotspot: PRs that touch it should trigger ingest_bulk.
+"""
 
 from __future__ import annotations
 
@@ -16,6 +19,9 @@ class RecordStore:
 
     def replace(self, records: list[dict]) -> None:
         self.reset()
+        self._index(records)
+
+    def _index(self, records: list[dict]) -> None:
         self.records.extend(records)
         for record in records:
             record_id = str(record["id"])

@@ -97,6 +97,13 @@ def test_warm_export_is_onboarded(manifest):
     assert result.hotspots == ["export-path"]
 
 
+def test_store_hotspot_triggers_ingest(manifest):
+    result = evaluate_pr_diff(["demo_service/app/store.py"], manifest)
+    assert result.trigger is True
+    assert result.workloads == ["ingest_bulk"]
+    assert result.hotspots == ["store-path"]
+
+
 def test_mixed_docs_and_hotspot(manifest):
     result = evaluate_pr_diff(
         ["docs/methodology.md", "demo_service/app/index.py"],
