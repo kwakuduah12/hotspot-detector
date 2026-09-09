@@ -13,6 +13,3 @@ operations:
   query_filter:
     scan:
       baseline_ms: 70.359
-  export_jsonl:
-    materialize:
-      baseline_ms: 128.971
