@@ -152,32 +152,36 @@ def run_workloads(
     output_path: Path,
     prefer_docker: bool = True,
     harness_root: Path | None = None,
+    harness_by_workload: dict[str, Path] | None = None,
     compose_project: str = "hotspot",
     role: str | None = None,
     git_sha: str | None = None,
 ) -> dict:
     """Run workloads against *repo_root* (the service under test).
 
-    *harness_root* is the tree that supplies workload commands. For last-good
-    vs first-bad, pass the merge-base worktree so a PR cannot shrink N.
+    *harness_root* is the default tree that supplies workload commands. For
+    last-good vs first-bad, pass the merge-base worktree so a PR cannot shrink N.
+    *harness_by_workload* overrides that per id so a newly added workload can
+    use the PR tree (the only copy of the command).
     """
     base_url = os.environ.get("HOTSPOT_BASE_URL", DEFAULT_BASE_URL)
     port = int(os.environ.get("HOTSPOT_PORT", "8000"))
     if "HOTSPOT_BASE_URL" not in os.environ:
         base_url = f"http://127.0.0.1:{port}"
 
+    command_root = harness_root or repo_root
     plan = []
     for workload_id in workload_ids:
         spec = manifest.workloads[workload_id]
+        root = (harness_by_workload or {}).get(workload_id, command_root)
         plan.append(
             {
                 "id": workload_id,
                 "command": spec.command,
                 "repeats": spec.repeats,
+                "command_root": str(root),
             }
         )
-
-    command_root = harness_root or repo_root
 
     def _annotate(payload: dict) -> dict:
         if role:
@@ -186,6 +190,7 @@ def run_workloads(
             payload["git_sha"] = git_sha
         payload["sut_root"] = str(repo_root)
         payload["harness_root"] = str(command_root)
+        payload["harness_by_workload"] = {item["id"]: item["command_root"] for item in plan}
         runtime = payload.get("environment") or payload.get("would_provision") or "unknown"
         payload["fingerprint"] = environment_fingerprint(str(runtime))
         return payload
@@ -227,7 +232,7 @@ def run_workloads(
         for item in plan:
             samples = run_workload_command(
                 item["command"],
-                repo_root=command_root,
+                repo_root=Path(item["command_root"]),
                 base_url=base_url,
                 repeats=item["repeats"],
             )

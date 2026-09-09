@@ -63,6 +63,33 @@ def load_manifest(path: str | Path) -> Manifest:
     return Manifest.model_validate(data)
 
 
+def merge_manifests(base: Manifest, pr: Manifest) -> Manifest:
+    """Keep base hotspots (a PR cannot delete them to skip) and add PR-only ones.
+
+    Workload commands already on the base keep the base N. New workloads come
+    from the PR. Exclude paths stay the base filters.
+    """
+    workloads = dict(base.workloads)
+    for workload_id, spec in pr.workloads.items():
+        if workload_id not in workloads:
+            workloads[workload_id] = spec
+
+    by_id: dict[str, Hotspot] = {hotspot.id: hotspot for hotspot in base.hotspots}
+    for hotspot in pr.hotspots:
+        existing = by_id.get(hotspot.id)
+        if existing is None:
+            by_id[hotspot.id] = hotspot
+            continue
+        by_id[hotspot.id] = existing.model_copy(
+            update={
+                "paths": list(dict.fromkeys([*existing.paths, *hotspot.paths])),
+                "workloads": list(dict.fromkeys([*existing.workloads, *hotspot.workloads])),
+            }
+        )
+
+    return base.model_copy(update={"hotspots": list(by_id.values()), "workloads": workloads})
+
+
 class BaselineCapture(BaseModel):
     service_area: str | None = None
     captured_at: str | None = None

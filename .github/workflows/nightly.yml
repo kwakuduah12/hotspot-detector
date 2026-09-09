@@ -14,6 +14,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
@@ -45,8 +47,12 @@ jobs:
         with:
           name: nightly-baselines
           path: results/
+      - name: Skip suggested PR off the default branch
+        if: github.ref != format('refs/heads/{0}', github.event.repository.default_branch)
+        run: echo "Nightly suggestions only open from ${{ github.event.repository.default_branch }}. Artifacts are still uploaded."
       - name: Decide whether to suggest a golden PR
         id: suggest
+        if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
         run: |
           python - <<'PY'
           import json
@@ -69,13 +75,17 @@ jobs:
           print(reason or "golden still holds")
           PY
       - name: Open suggested golden PR
-        if: steps.suggest.outputs.should_pr == 'true'
+        if: >-
+          github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+          && steps.suggest.outputs.should_pr == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          default_branch="${{ github.event.repository.default_branch }}"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git checkout -B nightly/golden-update
+          git fetch origin "$default_branch"
+          git checkout -B nightly/golden-update "origin/${default_branch}"
           cp results/baselines.yaml demo_service/baselines.yaml
           git add demo_service/baselines.yaml
           if git diff --cached --quiet; then
@@ -86,12 +96,12 @@ jobs:
           git push -u origin nightly/golden-update --force
           existing="$(gh pr list --head nightly/golden-update --json number --jq '.[0].number // empty')"
           if [ -z "$existing" ]; then
-            gh pr create --base main --head nightly/golden-update \
+            gh pr create --base "$default_branch" --head nightly/golden-update \
               --title "Nightly golden snapshot" \
               --body "$(cat <<'EOF'
-          Nightly re-measured all workloads in CI Docker and the golden floor drifted (or a new operation appeared).
+          Nightly re-measured all workloads in CI Docker on the default branch and the golden floor drifted (or a new operation appeared).
 
-          This PR only updates `demo_service/baselines.yaml`. Review the numbers, then merge to accept the new floor. It does not merge itself.
+          This PR only updates `demo_service/baselines.yaml`. Review the numbers, then merge to accept the new floor. It does not merge itself. Same-day noise is not a new floor.
 
           Last good vs this PR on product PRs is unchanged.
           EOF

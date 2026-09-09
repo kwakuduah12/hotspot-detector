@@ -47,14 +47,16 @@ That script starts the demo service with `HOTSPOT_SLOWDOWN_MS=150` and expects `
 | Export hotspot | `demo_service/app/export.py` → `export_jsonl` |
 | Cold paths | `config.py`, `health.py` (not listed) |
 
-A docs-only change (`docs/**`, `**/*.md`, `tests/**`) matches nothing and the gate exits 0 without posting a comment. The same skip applies to comment, docstring, or whitespace-only edits in a hotspot `.py` file (compared to `--base-ref`).
+A docs-only change (`docs/**`, `**/*.md`, `tests/**`) matches nothing and the gate exits 0 without posting a comment. The same skip applies to comment, docstring, or whitespace-only edits in a hotspot `.py` file (compared to `--base-ref`). Matching uses the merge-base manifest so a PR cannot delete hotspots to skip, and unions hotspots the PR adds so a first onboard still runs. New workloads use the PR command (last good is still the merge-base SUT; golden / `baseline_ms` is the fallback until the next capture).
 
 ## Recorded CI proofs
 
 - **First-bad / synthetic regression:** closed [PR #2](https://github.com/kwakuduah12/hotspot-detector/pull/2) planted a 150ms serialize sleep. The gate posted `regression`. Do not merge that change.
 - **Docs-only quiet skip:** [PR #5](https://github.com/kwakuduah12/hotspot-detector/pull/5). `perf.yml` listed markdown, printed a skip, and posted no sticky comment.
-- **First onboard skip:** [PR #6](https://github.com/kwakuduah12/hotspot-detector/pull/6) added the export hotspot, but matching uses the merge-base manifest, so the gate quiet-skipped.
-- **Live export trigger:** [PR #7](https://github.com/kwakuduah12/hotspot-detector/pull/7) touched `export.py` after the hotspot was on `main`. CI ran `export_jsonl`, posted last good vs this PR (`ok`, 137.1ms → 136.3ms), and a golden section. Golden was noisy until the Docker capture in this change; last good was the merge call.
+- **First onboard skip (old behavior):** [PR #6](https://github.com/kwakuduah12/hotspot-detector/pull/6) added the export hotspot while matching used only the merge-base manifest, so the gate quiet-skipped. Matching now unions base hotspots with PR-added ones; a later onboard PR that touches the new path should run.
+- **Live export trigger:** [PR #7](https://github.com/kwakuduah12/hotspot-detector/pull/7) touched `export.py` after the hotspot was on `main`. CI ran `export_jsonl`, posted last good vs this PR (`ok`, 137.1ms → 136.3ms), and a golden section.
+- **Golden ~129ms:** [PR #9](https://github.com/kwakuduah12/hotspot-detector/pull/9) confirmed vs golden `materialize` **129.0ms** (not the old 73ms laptop fallback). Last good vs this PR was `ok`. The list-comprehension refactor was reverted in [PR #11](https://github.com/kwakuduah12/hotspot-detector/pull/11) (`ok` vs last good and vs golden).
+- **Fixture golden is not a floor:** closed [PR #10](https://github.com/kwakuduah12/hotspot-detector/pull/10) was a nightly suggestion from a missing-export dispatch, same-day 123–138ms noise. Do not merge fixture branches or accept a suggested PR that did not run on `main`.
 
 ## Shadow snippet (next area)
 

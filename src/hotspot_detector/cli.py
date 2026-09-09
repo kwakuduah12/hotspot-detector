@@ -24,7 +24,7 @@ from hotspot_detector.compare import (
     snapshot_from_run,
 )
 from hotspot_detector.cosmetic import is_cosmetic_path
-from hotspot_detector.manifest import load_baselines, load_manifest
+from hotspot_detector.manifest import load_baselines, load_manifest, merge_manifests
 from hotspot_detector.matcher import MatchResult, evaluate_pr_diff
 from hotspot_detector.report import render_ab_dry_run, render_markdown
 from hotspot_detector.runner import is_dry_run, run_workloads
@@ -109,12 +109,18 @@ def match(
     ),
 ) -> None:
     """Print matched workloads for a changed-file list."""
+    repo_root = _repo_root()
     loaded = load_manifest(manifest)
     files = _read_changed_files(changed_files)
     cosmetic = None
     if base_ref:
-        sha = resolve_merge_base(_repo_root(), base_ref)
-        cosmetic = _cosmetic_checker(_repo_root(), sha)
+        sha = resolve_merge_base(repo_root, base_ref)
+        cosmetic = _cosmetic_checker(repo_root, sha)
+        rel = _manifest_relative(manifest, repo_root)
+        with last_good_worktree(repo_root, sha) as worktree:
+            base_path = worktree / rel
+            if base_path.exists():
+                loaded = merge_manifests(load_manifest(base_path), loaded)
     result = evaluate_pr_diff(files, loaded, is_cosmetic=cosmetic).to_dict()
     _write_json(output, result)
 
@@ -246,9 +252,13 @@ def gate(
                 typer.echo(f"Manifest {rel} not present at base; skipping hotspot check.")
                 raise typer.Exit(0)
             harness = load_manifest(manifest_at_base)
+            pr_path = repo_root / rel
+            merged = harness
+            if pr_path.exists():
+                merged = merge_manifests(harness, load_manifest(pr_path))
             matched = evaluate_pr_diff(
                 files,
-                harness,
+                merged,
                 is_cosmetic=_cosmetic_checker(repo_root, last_good_sha),
             )
             (results_dir / "match.json").write_text(
@@ -256,21 +266,28 @@ def gate(
             )
             _skip_if_quiet(matched, report_path)
 
+            harness_by_workload = {
+                workload_id: (worktree if workload_id in harness.workloads else repo_root)
+                for workload_id in matched.workloads
+            }
             last_good = run_workloads(
-                harness,
+                merged,
                 matched.workloads,
                 repo_root=worktree,
                 output_path=last_good_path,
                 prefer_docker=not no_docker,
                 compose_project="hotspotlg",
+                harness_root=worktree,
+                harness_by_workload=harness_by_workload,
                 role="last_good",
                 git_sha=last_good_sha,
             )
             first_bad = run_workloads(
-                harness,
+                merged,
                 matched.workloads,
                 repo_root=repo_root,
                 harness_root=worktree,
+                harness_by_workload=harness_by_workload,
                 output_path=run_path,
                 prefer_docker=not no_docker,
                 compose_project="hotspotfb",
@@ -283,7 +300,7 @@ def gate(
 
             if is_dry_run() or last_good.get("dry_run") or first_bad.get("dry_run"):
                 markdown = render_ab_dry_run(
-                    harness,
+                    merged,
                     matched_files=matched.matched_files,
                     workloads=matched.workloads,
                     last_good_sha=short_sha(repo_root, last_good_sha),
@@ -296,19 +313,19 @@ def gate(
             compared = compare_runs(
                 last_good,
                 first_bad,
-                harness,
+                merged,
                 last_good_sha=short_sha(repo_root, last_good_sha),
                 first_bad_sha=short_sha(repo_root, first_bad_sha),
             )
             if baselines is not None:
                 attach_golden(
                     compared,
-                    compare_run(first_bad, harness, load_baselines(baselines)),
+                    compare_run(first_bad, merged, load_baselines(baselines)),
                 )
             compare_path.write_text(json.dumps(compared.to_dict(), indent=2) + "\n")
             markdown = render_markdown(
                 compared,
-                harness,
+                merged,
                 matched_files=matched.matched_files,
                 workloads=matched.workloads,
             )
