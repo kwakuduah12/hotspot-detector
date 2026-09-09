@@ -272,7 +272,7 @@ def golden_update_reason(
     if missing:
         return "new operations: " + ", ".join(missing)
     overall = compare.overall if isinstance(compare, CompareResult) else compare.get("overall")
-    if overall in {"warning", "regression", "error"}:
+    if overall in {"warning", "regression"}:
         return f"golden compare is {overall}"
     return None
 
