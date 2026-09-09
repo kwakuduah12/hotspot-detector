@@ -218,6 +218,65 @@ def compare_run(
     return CompareResult(overall=overall, operations=results)
 
 
+def snapshot_from_run(
+    run: dict,
+    *,
+    service_area: str,
+    repeats: int,
+    captured_at: str,
+) -> dict:
+    """YAML-ready golden snapshot from a completed (or dry-run) workload run."""
+    captured = baselines_from_run(run)
+    environment: dict = {}
+    raw_env = run.get("environment")
+    if isinstance(raw_env, dict):
+        environment.update(raw_env)
+    elif raw_env:
+        environment["runtime"] = str(raw_env)
+    if run.get("base_url"):
+        environment["base_url"] = run["base_url"]
+    fingerprint = run.get("fingerprint") if isinstance(run.get("fingerprint"), dict) else {}
+    for key in FINGERPRINT_KEYS:
+        if fingerprint.get(key) and key not in environment:
+            environment[key] = fingerprint[key]
+    operations: dict[str, dict[str, dict[str, float]]] = {}
+    for workload_id, ops in captured.operations.items():
+        operations[str(workload_id)] = {
+            str(name): {"baseline_ms": round(float(row["baseline_ms"]), 3)}
+            for name, row in ops.items()
+            if "baseline_ms" in row
+        }
+    return {
+        "service_area": service_area,
+        "captured_at": captured_at,
+        "environment": environment,
+        "repeats": repeats,
+        "operations": operations,
+    }
+
+
+def golden_update_reason(
+    compare: CompareResult | dict,
+    current: BaselineCapture,
+    proposed: BaselineCapture,
+) -> str | None:
+    """Why nightly should open a baselines PR, or None if the golden still holds."""
+    if not proposed.operations:
+        return None
+    missing: list[str] = []
+    for workload_id, ops in proposed.operations.items():
+        current_ops = current.operations.get(workload_id) or {}
+        for name in ops:
+            if name not in current_ops:
+                missing.append(f"{workload_id}.{name}")
+    if missing:
+        return "new operations: " + ", ".join(missing)
+    overall = compare.overall if isinstance(compare, CompareResult) else compare.get("overall")
+    if overall in {"warning", "regression", "error"}:
+        return f"golden compare is {overall}"
+    return None
+
+
 def baselines_from_run(run: dict) -> BaselineCapture:
     """Treat a completed run's medians as a baseline snapshot."""
     operations: dict[str, dict[str, dict[str, float]]] = {}

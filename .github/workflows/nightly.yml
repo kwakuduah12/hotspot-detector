@@ -5,6 +5,10 @@ on:
     - cron: "0 7 * * *"
   workflow_dispatch:
 
+permissions:
+  contents: write
+  pull-requests: write
+
 jobs:
   remeasure:
     runs-on: ubuntu-latest
@@ -32,8 +36,64 @@ jobs:
             --compare results/nightly-compare.json \
             --manifest demo_service/hotspot-manifest.yaml \
             --output results/nightly-report.md
+          hotspot-detector capture \
+            --manifest demo_service/hotspot-manifest.yaml \
+            --from-run results/nightly-run.json \
+            --output results/baselines.yaml
       - name: Upload nightly artifacts
         uses: actions/upload-artifact@v7
         with:
           name: nightly-baselines
           path: results/
+      - name: Decide whether to suggest a golden PR
+        id: suggest
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          from hotspot_detector.compare import golden_update_reason
+          from hotspot_detector.manifest import load_baselines
+
+          compare = json.loads(Path("results/nightly-compare.json").read_text())
+          reason = golden_update_reason(
+              compare,
+              load_baselines("demo_service/baselines.yaml"),
+              load_baselines("results/baselines.yaml"),
+          )
+          with Path(os.environ["GITHUB_OUTPUT"]).open("a") as fh:
+              fh.write(f"should_pr={'true' if reason else 'false'}\n")
+              if reason:
+                  fh.write(f"reason={reason}\n")
+          print(reason or "golden still holds")
+          PY
+      - name: Open suggested golden PR
+        if: steps.suggest.outputs.should_pr == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -B nightly/golden-update
+          cp results/baselines.yaml demo_service/baselines.yaml
+          git add demo_service/baselines.yaml
+          if git diff --cached --quiet; then
+            echo "Proposed snapshot matches the checked-in golden."
+            exit 0
+          fi
+          git commit -m "Suggest golden snapshot from nightly capture."
+          git push -u origin nightly/golden-update --force
+          existing="$(gh pr list --head nightly/golden-update --json number --jq '.[0].number // empty')"
+          if [ -z "$existing" ]; then
+            gh pr create --base main --head nightly/golden-update \
+              --title "Nightly golden snapshot" \
+              --body "$(cat <<'EOF'
+          Nightly re-measured all workloads in CI Docker and the golden floor drifted (or a new operation appeared).
+
+          This PR only updates `demo_service/baselines.yaml`. Review the numbers, then merge to accept the new floor. It does not merge itself.
+
+          Last good vs this PR on product PRs is unchanged.
+          EOF
+          )"
+          fi

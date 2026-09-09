@@ -7,7 +7,9 @@ from hotspot_detector.compare import (
     compare_run,
     compare_runs,
     fingerprint_mismatch,
+    golden_update_reason,
     median,
+    snapshot_from_run,
 )
 from hotspot_detector.manifest import BaselineCapture, Manifest, OperationSpec, WorkloadSpec
 
@@ -193,3 +195,55 @@ def test_attach_golden_copies_snapshot_compare():
     attach_golden(result, golden)
     assert result.golden_overall == "regression"
     assert result.overall == "regression"
+
+
+def test_snapshot_from_run_includes_fingerprint_and_rounded_medians():
+    snapshot = snapshot_from_run(
+        {
+            "environment": "docker",
+            "base_url": "http://127.0.0.1:8000",
+            "fingerprint": {
+                "runtime": "docker",
+                "python": "3.12.0",
+                "machine": "x86_64",
+                "system": "Linux",
+            },
+            "medians": {"export_jsonl": {"materialize": 136.271}},
+        },
+        service_area="demo-platform",
+        repeats=5,
+        captured_at="2026-09-09T18:00:00Z",
+    )
+    assert snapshot["service_area"] == "demo-platform"
+    assert snapshot["environment"]["python"] == "3.12.0"
+    assert snapshot["environment"]["base_url"] == "http://127.0.0.1:8000"
+    assert snapshot["operations"]["export_jsonl"]["materialize"]["baseline_ms"] == 136.271
+
+
+def test_golden_update_reason_for_new_operation():
+    current = BaselineCapture(operations={"ingest_bulk": {"serialize": {"baseline_ms": 260.0}}})
+    proposed = BaselineCapture(
+        operations={
+            "ingest_bulk": {"serialize": {"baseline_ms": 260.0}},
+            "export_jsonl": {"materialize": {"baseline_ms": 137.0}},
+        }
+    )
+    reason = golden_update_reason({"overall": "ok"}, current, proposed)
+    assert reason is not None
+    assert "export_jsonl.materialize" in reason
+
+
+def test_golden_update_reason_for_regression():
+    ops = {"w": {"op": {"baseline_ms": 100.0}}}
+    current = BaselineCapture(operations=ops)
+    proposed = BaselineCapture(operations={"w": {"op": {"baseline_ms": 180.0}}})
+    assert golden_update_reason({"overall": "regression"}, current, proposed) == (
+        "golden compare is regression"
+    )
+
+
+def test_golden_update_reason_skips_when_floor_holds():
+    ops = {"w": {"op": {"baseline_ms": 100.0}}}
+    current = BaselineCapture(operations=ops)
+    proposed = BaselineCapture(operations=ops)
+    assert golden_update_reason({"overall": "ok"}, current, proposed) is None
