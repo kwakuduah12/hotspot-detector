@@ -2,7 +2,8 @@ from pathlib import Path
 
 import pytest
 
-from hotspot_detector.manifest import load_baselines, load_manifest
+from hotspot_detector.manifest import load_baselines, load_manifest, merge_manifests
+from hotspot_detector.matcher import evaluate_pr_diff
 
 
 def test_operation_map(manifest):
@@ -33,3 +34,40 @@ def test_checked_in_manifest_is_valid(manifest_path):
     for hotspot in loaded.hotspots:
         assert hotspot.workloads
         assert hotspot.paths
+
+
+def test_merge_keeps_base_hotspot_when_pr_deletes_it(manifest):
+    pr = manifest.model_copy(
+        update={"hotspots": [h for h in manifest.hotspots if h.id != "ingest-path"]}
+    )
+    merged = merge_manifests(manifest, pr)
+    result = evaluate_pr_diff(["demo_service/app/ingest.py"], merged)
+    assert result.trigger is True
+    assert result.workloads == ["ingest_bulk"]
+
+
+def test_merge_runs_hotspot_added_on_pr(manifest):
+    base = manifest.model_copy(
+        update={
+            "hotspots": [h for h in manifest.hotspots if h.id != "export-path"],
+            "workloads": {
+                key: spec for key, spec in manifest.workloads.items() if key != "export_jsonl"
+            },
+        }
+    )
+    assert evaluate_pr_diff(["demo_service/app/export.py"], base).trigger is False
+    merged = merge_manifests(base, manifest)
+    result = evaluate_pr_diff(["demo_service/app/export.py"], merged)
+    assert result.trigger is True
+    assert result.workloads == ["export_jsonl"]
+    assert result.hotspots == ["export-path"]
+
+
+def test_merge_keeps_base_repeats_when_pr_shrinks_n(manifest):
+    shrunk = manifest.workloads["ingest_bulk"].model_copy(update={"repeats": 1})
+    pr = manifest.model_copy(
+        update={"workloads": {**dict(manifest.workloads), "ingest_bulk": shrunk}}
+    )
+    merged = merge_manifests(manifest, pr)
+    assert merged.workloads["ingest_bulk"].repeats == manifest.workloads["ingest_bulk"].repeats
+    assert merged.workloads["ingest_bulk"].repeats != 1

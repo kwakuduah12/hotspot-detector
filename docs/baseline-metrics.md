@@ -14,7 +14,7 @@ That is the same Docker Compose stack `perf.yml` uses. Add `--no-docker` only fo
 
 Each workload runs `repeats` times (5). The comparator uses the **median** of those samples. Thresholds were widened to 30% after capture-to-capture serialize variance of ~25% on the same laptop.
 
-`perf.yml` measures last good vs this PR in one job, then also compares this PR to the checked-in golden snapshot (`--baselines`). Nightly (`.github/workflows/nightly.yml`) is the golden floor: it re-measures all workloads, writes a copy-ready `results/baselines.yaml`, and opens a PR on `nightly/golden-update` when the floor drifted or a new operation appeared. It does not merge itself.
+`perf.yml` measures last good vs this PR in one job, then also compares this PR to the checked-in golden snapshot (`--baselines`). Nightly (`.github/workflows/nightly.yml`) is the golden floor: it re-measures all workloads and writes a copy-ready `results/baselines.yaml`. A suggested PR on `nightly/golden-update` opens only when the job ran on the default branch **and** the floor drifted or a new operation appeared. It always cuts that branch from `origin/<default>`. It does not merge itself. `workflow_dispatch` off `main` uploads artifacts only.
 
 Reuse a completed run instead of provisioning twice:
 
@@ -38,6 +38,6 @@ Workload size is fixed: 1200 records, 256 sha256 rounds per record on serialize,
 
 ## Refresh
 
-Re-run capture when the hardware, container image, or workload size changes. Do not edit medians by hand to “make CI green”; recapture in the environment that will run `perf.yml`. Accept a nightly suggested PR only after reviewing the new snapshot.
+Re-run capture when the hardware, container image, or workload size changes. Do not edit medians by hand to “make CI green”; recapture in the environment that will run `perf.yml`. Accept a nightly suggested PR only after reviewing the new snapshot, and only if that nightly ran on `main`. Same-day jitter is not a new floor.
 
 Last good vs this PR answers “did this change hurt us?” The golden snapshot answers “are we slower than the last reviewed capture?” Compare refuses if the two CI runs have different environment fingerprints (runtime, Python, machine, OS).

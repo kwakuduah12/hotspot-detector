@@ -213,6 +213,7 @@ def test_gate_base_ref_dry_run(tmp_path, runner, manifest_path, monkeypatch):
     assert first_bad["role"] == "first_bad"
     assert last_good["harness_root"] == last_good["sut_root"]
     assert first_bad["harness_root"] != first_bad["sut_root"]
+    assert last_good["harness_by_workload"]["ingest_bulk"] == last_good["sut_root"]
     report = (results_dir / "report.md").read_text()
     assert "last good" in report.lower()
     assert "dry_run" in report
