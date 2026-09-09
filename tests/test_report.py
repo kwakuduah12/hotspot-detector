@@ -70,6 +70,56 @@ def test_ab_report_uses_last_good_headers_and_verdict(manifest):
     assert "does not block merge" in markdown
 
 
+def test_ab_report_fingerprint_refusal(manifest):
+    compare = CompareResult(
+        overall="error",
+        operations=[],
+        mode="ab",
+        fingerprint_ok=False,
+        fingerprint_error="environment mismatch: runtime='docker' vs 'local'",
+    )
+    markdown = render_markdown(compare, manifest)
+    assert "Compare refused" in markdown
+    assert "runtime='docker' vs 'local'" in markdown
+
+
+def test_ab_report_includes_golden_section(manifest):
+    compare = CompareResult(
+        overall="ok",
+        operations=[
+            OperationResult(
+                workload="ingest_bulk",
+                operation="serialize",
+                baseline_ms=260.0,
+                current_ms=262.0,
+                delta_ms=2.0,
+                delta_pct=0.8,
+                threshold_pct=30.0,
+                threshold_ms=80.0,
+                status="ok",
+            )
+        ],
+        mode="ab",
+        golden_overall="warning",
+        golden_operations=[
+            OperationResult(
+                workload="ingest_bulk",
+                operation="serialize",
+                baseline_ms=173.0,
+                current_ms=262.0,
+                delta_ms=89.0,
+                delta_pct=51.4,
+                threshold_pct=30.0,
+                threshold_ms=80.0,
+                status="regression",
+            )
+        ],
+    )
+    markdown = render_markdown(compare, manifest, workloads=["ingest_bulk"])
+    assert "vs golden snapshot" in markdown
+    assert "`warning`" in markdown
+
+
 def test_ab_dry_run_report(manifest):
     markdown = render_ab_dry_run(
         manifest,

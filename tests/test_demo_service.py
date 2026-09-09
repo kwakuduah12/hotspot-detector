@@ -1,6 +1,7 @@
 import httpx
 import pytest
 
+from demo_service.workloads import export_jsonl as export_workload
 from demo_service.workloads import query_filter
 
 from demo_service.app.config import APP_NAME
@@ -69,3 +70,8 @@ def test_routes_are_registered():
 def test_query_filter_workload_requires_a_server():
     with pytest.raises(httpx.ConnectError):
         query_filter.run("http://127.0.0.1:9")
+
+
+def test_export_jsonl_workload_requires_a_server():
+    with pytest.raises(httpx.ConnectError):
+        export_workload.run("http://127.0.0.1:9")

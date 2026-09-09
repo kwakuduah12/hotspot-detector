@@ -1,10 +1,12 @@
 import pytest
 
 from hotspot_detector.compare import (
+    attach_golden,
     baselines_from_run,
     classify,
     compare_run,
     compare_runs,
+    fingerprint_mismatch,
     median,
 )
 from hotspot_detector.manifest import BaselineCapture, Manifest, OperationSpec, WorkloadSpec
@@ -157,3 +159,37 @@ def test_compare_runs_ok_when_pr_matches_last_good():
     assert result.overall == "ok"
     assert result.last_good_sha == "g"
     assert result.first_bad_sha == "b"
+
+
+def test_fingerprint_mismatch_refuses_compare():
+    last_good = {
+        "workloads": {"w": {"op": [100.0]}},
+        "fingerprint": {"runtime": "docker", "python": "3.12.0", "machine": "x86_64", "system": "Linux"},
+    }
+    first_bad = {
+        "workloads": {"w": {"op": [100.0]}},
+        "fingerprint": {"runtime": "local", "python": "3.13.3", "machine": "arm64", "system": "Darwin"},
+    }
+    assert fingerprint_mismatch(last_good, first_bad)
+    result = compare_runs(last_good, first_bad, _manifest())
+    assert result.overall == "error"
+    assert result.fingerprint_ok is False
+    assert result.operations == []
+
+
+def test_matching_fingerprints_still_compare():
+    fp = {"runtime": "docker", "python": "3.12.0", "machine": "x86_64", "system": "Linux"}
+    last_good = {"workloads": {"w": {"op": [100.0]}}, "fingerprint": fp}
+    first_bad = {"workloads": {"w": {"op": [101.0]}}, "fingerprint": fp}
+    assert fingerprint_mismatch(last_good, first_bad) is None
+    assert compare_runs(last_good, first_bad, _manifest()).overall == "ok"
+
+
+def test_attach_golden_copies_snapshot_compare():
+    last_good = {"workloads": {"w": {"op": [100.0]}}}
+    first_bad = {"workloads": {"w": {"op": [160.0]}}}
+    result = compare_runs(last_good, first_bad, _manifest())
+    golden = compare_run(first_bad, _manifest(baseline_ms=50.0))
+    attach_golden(result, golden)
+    assert result.golden_overall == "regression"
+    assert result.overall == "regression"

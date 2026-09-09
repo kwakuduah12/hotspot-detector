@@ -44,8 +44,8 @@ That script starts the demo service with `HOTSPOT_SLOWDOWN_MS=150` and expects `
 | Baselines | `demo_service/baselines.yaml` |
 | Ingest hotspot | `demo_service/app/ingest.py`, `index.py` → `ingest_bulk` |
 | Query hotspot | `demo_service/app/query.py` → `query_filter` |
+| Export hotspot | `demo_service/app/export.py` → `export_jsonl` |
 | Cold paths | `config.py`, `health.py` (not listed) |
-| Warm / unwired | `demo_service/app/export.py` → `demo_service/candidates.yaml` |
 
 A docs-only change (`docs/**`, `**/*.md`, `tests/**`) matches nothing and the gate exits 0 without posting a comment. The same skip applies to comment, docstring, or whitespace-only edits in a hotspot `.py` file (compared to `--base-ref`).
 
@@ -54,9 +54,9 @@ A docs-only change (`docs/**`, `**/*.md`, `tests/**`) matches nothing and the ga
 - **First-bad / synthetic regression:** closed [PR #2](https://github.com/kwakuduah12/hotspot-detector/pull/2) planted a 150ms serialize sleep. The gate posted `regression`. Do not merge that change.
 - **Docs-only quiet skip:** this PR. `perf.yml` should list only markdown, print a skip, and post no sticky comment.
 
-## Shadow snippet (second area)
+## Shadow snippet (next area)
 
-`demo_service/candidates.yaml` is the export path: identified, not live. To onboard it, add an `export_jsonl` workload, capture a `scan`-style baseline, and move the hotspot entry into the active manifest. No CLI changes.
+`demo_service/candidates.yaml` is empty. The export path was the worked example of a warm candidate promoted into the live manifest: add a workload, set thresholds, capture a fallback `baseline_ms`, and move the hotspot entry. No CLI changes.
 
 ## Tuning
 

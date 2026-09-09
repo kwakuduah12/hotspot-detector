@@ -6,6 +6,7 @@ import cProfile
 import pstats
 from io import StringIO
 
+from demo_service.app.export import export_jsonl
 from demo_service.app.index import index_records
 from demo_service.app.ingest import serialize_records
 from demo_service.app.query import scan_filter
@@ -31,6 +32,18 @@ def _profile_query() -> str:
     return _profile(_scan, "query scan_filter")
 
 
+def _profile_export() -> str:
+    store = RecordStore()
+    records = generate_records()
+    serialized = serialize_records(records)
+    index_records(serialized, store=store)
+
+    def _export() -> None:
+        export_jsonl(store=store)
+
+    return _profile(_export, "export export_jsonl")
+
+
 def _profile(fn, label: str) -> str:
     profiler = cProfile.Profile()
     profiler.enable()
@@ -45,6 +58,7 @@ def _profile(fn, label: str) -> str:
 def main() -> None:
     print(_profile(_run_ingest, "ingest serialize + index"))
     print(_profile_query())
+    print(_profile_export())
 
 
 if __name__ == "__main__":

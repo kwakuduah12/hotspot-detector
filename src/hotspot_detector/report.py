@@ -70,6 +70,8 @@ def render_ab_dry_run(
 def verdict_line(compare: CompareResult) -> str:
     if compare.mode != "ab":
         return ""
+    if compare.fingerprint_ok is False:
+        return f"Compare refused: {compare.fingerprint_error}."
     return VERDICTS.get(compare.overall, VERDICTS["error"])
 
 
@@ -120,6 +122,24 @@ def render_markdown(
             f"| `{op.workload}` | `{op.operation}` | {format_ms(op.baseline_ms)} | "
             f"{format_ms(op.current_ms)} | {delta} | `{op.status}` |"
         )
+    if compare.golden_overall is not None:
+        lines.extend(
+            [
+                "",
+                f"**vs golden snapshot:** `{compare.golden_overall}`",
+                "",
+                "| Workload | Operation | Golden | This PR | Delta | Status |",
+                "|---|---|---:|---:|---:|---|",
+            ]
+        )
+        for op in compare.golden_operations:
+            delta = format_ms(op.delta_ms)
+            if op.delta_pct is not None:
+                delta = f"{delta} ({format_pct(op.delta_pct)})"
+            lines.append(
+                f"| `{op.workload}` | `{op.operation}` | {format_ms(op.baseline_ms)} | "
+                f"{format_ms(op.current_ms)} | {delta} | `{op.status}` |"
+            )
     lines.extend(
         [
             "",

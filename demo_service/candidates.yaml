@@ -1,14 +1,6 @@
-# Shadow / candidate hotspots — identified, not wired in v1.
-# Copy an entry into hotspot-manifest.yaml once a workload and baseline exist.
+# Shadow / candidate hotspots — identified, not wired.
+# Copy an entry into hotspot-manifest.yaml once a workload exists.
+# demo-platform export is live; this file is empty until the next area.
 version: 1
 service_area: demo-platform
-hotspots:
-  - id: export-path
-    paths:
-      - "demo_service/app/export.py"
-    workloads:
-      - export_jsonl
-    notes: >
-      Warm path. export_jsonl walks the full store and materializes JSONL.
-      Held out of the active manifest until a workload and baseline exist.
-      See docs/methodology.md and docs/adoption-guide.md.
+hotspots: []

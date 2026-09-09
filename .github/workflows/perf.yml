@@ -37,6 +37,7 @@ jobs:
             --manifest demo_service/hotspot-manifest.yaml \
             --changed-files /tmp/changed.txt \
             --base-ref "origin/${{ github.base_ref }}" \
+            --baselines demo_service/baselines.yaml \
             --results-dir results
           python - <<'PY'
           import json, os, pathlib

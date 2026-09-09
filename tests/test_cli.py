@@ -25,7 +25,8 @@ def test_run_all_dry_run(tmp_path, runner, manifest_path, monkeypatch):
     )
     assert result.exit_code == 0, result.output
     payload = json.loads(out.read_text())
-    assert set(payload["workloads"]) == {"ingest_bulk", "query_filter"}
+    assert set(payload["workloads"]) == {"ingest_bulk", "query_filter", "export_jsonl"}
+    assert payload["fingerprint"]["runtime"] in {"docker", "local"}
 
 
 def test_run_rejects_unknown_workload(runner, manifest_path):
@@ -256,6 +257,48 @@ def test_compare_cli_last_good(tmp_path, runner, manifest_path):
     assert compared["overall"] == "regression"
     serialize = next(op for op in compared["operations"] if op["operation"] == "serialize")
     assert serialize["baseline_ms"] == 260.0
+    assert compared["golden_overall"] is None
+
+
+def test_compare_cli_last_good_with_golden(tmp_path, runner, manifest_path, baselines_path):
+    last_good = tmp_path / "last_good.json"
+    last_good.write_text(
+        json.dumps({"workloads": {"ingest_bulk": {"serialize": [260.0], "index": [58.0]}}})
+    )
+    run_path = tmp_path / "run.json"
+    run_path.write_text(
+        json.dumps(
+            {
+                "workloads": {
+                    "ingest_bulk": {
+                        "serialize": [262.0, 261.0, 260.0],
+                        "index": [54.0, 55.0, 53.0],
+                    }
+                }
+            }
+        )
+    )
+    compare_path = tmp_path / "compare.json"
+    result = runner.invoke(
+        app,
+        [
+            "compare",
+            "--run",
+            str(run_path),
+            "--last-good",
+            str(last_good),
+            "--baselines",
+            str(baselines_path),
+            "--manifest",
+            str(manifest_path),
+            "--output",
+            str(compare_path),
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    compared = json.loads(compare_path.read_text())
+    assert compared["overall"] == "ok"
+    assert compared["golden_overall"] == "ok"
 
 
 def test_compare_and_report_cli(tmp_path, runner, manifest_path, baselines_path):
