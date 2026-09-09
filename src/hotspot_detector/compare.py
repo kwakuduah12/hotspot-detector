@@ -73,6 +73,10 @@ class CompareResult:
     mode: str = "baseline"
     last_good_sha: str | None = None
     first_bad_sha: str | None = None
+    fingerprint_ok: bool = True
+    fingerprint_error: str | None = None
+    golden_overall: str | None = None
+    golden_operations: list[OperationResult] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return {
@@ -81,6 +85,10 @@ class CompareResult:
             "mode": self.mode,
             "last_good_sha": self.last_good_sha,
             "first_bad_sha": self.first_bad_sha,
+            "fingerprint_ok": self.fingerprint_ok,
+            "fingerprint_error": self.fingerprint_error,
+            "golden_overall": self.golden_overall,
+            "golden_operations": [op.to_dict() for op in self.golden_operations],
         }
 
 
@@ -240,6 +248,27 @@ def baselines_from_run(run: dict) -> BaselineCapture:
     )
 
 
+FINGERPRINT_KEYS = ("runtime", "python", "machine", "system")
+
+
+def fingerprint_mismatch(last_good: dict, first_bad: dict) -> str | None:
+    left = last_good.get("fingerprint") or {}
+    right = first_bad.get("fingerprint") or {}
+    if not left or not right:
+        return None
+    diffs = [key for key in FINGERPRINT_KEYS if left.get(key) != right.get(key)]
+    if not diffs:
+        return None
+    parts = [f"{key}={left.get(key)!r} vs {right.get(key)!r}" for key in diffs]
+    return "environment mismatch: " + ", ".join(parts)
+
+
+def attach_golden(result: CompareResult, golden: CompareResult) -> CompareResult:
+    result.golden_overall = golden.overall
+    result.golden_operations = golden.operations
+    return result
+
+
 def compare_runs(
     last_good: dict,
     first_bad: dict,
@@ -249,6 +278,17 @@ def compare_runs(
     first_bad_sha: str | None = None,
 ) -> CompareResult:
     """Compare this PR (first-bad) against a same-env last-good run."""
+    mismatch = fingerprint_mismatch(last_good, first_bad)
+    if mismatch:
+        return CompareResult(
+            overall="error",
+            operations=[],
+            mode="ab",
+            last_good_sha=last_good_sha or last_good.get("git_sha"),
+            first_bad_sha=first_bad_sha or first_bad.get("git_sha"),
+            fingerprint_ok=False,
+            fingerprint_error=mismatch,
+        )
     result = compare_run(first_bad, manifest, baselines_from_run(last_good))
     result.mode = "ab"
     result.last_good_sha = last_good_sha or last_good.get("git_sha")

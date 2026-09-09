@@ -90,9 +90,11 @@ def test_cold_config_does_not_match(manifest):
     assert result.relevant_files == ["demo_service/app/config.py"]
 
 
-def test_warm_export_not_in_v1_manifest(manifest):
+def test_warm_export_is_onboarded(manifest):
     result = evaluate_pr_diff(["demo_service/app/export.py"], manifest)
-    assert result.trigger is False
+    assert result.trigger is True
+    assert result.workloads == ["export_jsonl"]
+    assert result.hotspots == ["export-path"]
 
 
 def test_mixed_docs_and_hotspot(manifest):

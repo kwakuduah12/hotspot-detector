@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import platform
 import shutil
 import subprocess
 import sys
@@ -24,6 +25,16 @@ def is_dry_run() -> bool:
 
 def docker_available() -> bool:
     return shutil.which("docker") is not None
+
+
+def environment_fingerprint(runtime: str) -> dict[str, str]:
+    """Identify the box so last-good and this PR are only compared when they match."""
+    return {
+        "runtime": runtime,
+        "python": platform.python_version(),
+        "machine": platform.machine(),
+        "system": platform.system(),
+    }
 
 
 def wait_for_health(base_url: str, timeout: float = 40.0) -> None:
@@ -175,6 +186,8 @@ def run_workloads(
             payload["git_sha"] = git_sha
         payload["sut_root"] = str(repo_root)
         payload["harness_root"] = str(command_root)
+        runtime = payload.get("environment") or payload.get("would_provision") or "unknown"
+        payload["fingerprint"] = environment_fingerprint(str(runtime))
         return payload
 
     if is_dry_run():

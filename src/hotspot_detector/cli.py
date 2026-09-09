@@ -15,7 +15,13 @@ from hotspot_detector.ab import (
     resolve_merge_base,
     short_sha,
 )
-from hotspot_detector.compare import compare_run, compare_runs
+from hotspot_detector.compare import (
+    CompareResult,
+    OperationResult,
+    attach_golden,
+    compare_run,
+    compare_runs,
+)
 from hotspot_detector.cosmetic import is_cosmetic_path
 from hotspot_detector.manifest import load_baselines, load_manifest
 from hotspot_detector.matcher import MatchResult, evaluate_pr_diff
@@ -56,6 +62,22 @@ def _skip_if_quiet(matched: MatchResult, report_path: Path | None = None) -> Non
         return
     typer.echo(reason)
     raise typer.Exit(0)
+
+
+def _compare_result_from_payload(payload: dict) -> CompareResult:
+    return CompareResult(
+        overall=payload["overall"],
+        operations=[OperationResult(**row) for row in payload["operations"]],
+        mode=payload.get("mode", "baseline"),
+        last_good_sha=payload.get("last_good_sha"),
+        first_bad_sha=payload.get("first_bad_sha"),
+        fingerprint_ok=payload.get("fingerprint_ok", True),
+        fingerprint_error=payload.get("fingerprint_error"),
+        golden_overall=payload.get("golden_overall"),
+        golden_operations=[
+            OperationResult(**row) for row in payload.get("golden_operations") or []
+        ],
+    )
 
 
 def _write_json(path: Path | None, payload: dict) -> None:
@@ -148,6 +170,8 @@ def compare(
     run_payload = json.loads(run.read_text())
     if last_good is not None:
         result = compare_runs(json.loads(last_good.read_text()), run_payload, loaded)
+        if baselines is not None:
+            attach_golden(result, compare_run(run_payload, loaded, load_baselines(baselines)))
     else:
         captured = load_baselines(baselines) if baselines else None
         result = compare_run(run_payload, loaded, captured)
@@ -165,15 +189,7 @@ def report(
     loaded = load_manifest(manifest)
     run_payload = json.loads(run.read_text())
     compare_payload = json.loads(compare_file.read_text())
-    from hotspot_detector.compare import CompareResult, OperationResult
-
-    compare_result = CompareResult(
-        overall=compare_payload["overall"],
-        operations=[OperationResult(**row) for row in compare_payload["operations"]],
-        mode=compare_payload.get("mode", "baseline"),
-        last_good_sha=compare_payload.get("last_good_sha"),
-        first_bad_sha=compare_payload.get("first_bad_sha"),
-    )
+    compare_result = _compare_result_from_payload(compare_payload)
     markdown = render_markdown(
         compare_result,
         loaded,
@@ -188,7 +204,12 @@ def report(
 def gate(
     manifest: Path = typer.Option(..., exists=True, dir_okay=False),
     changed_files: Path = typer.Option(..., "--changed-files", exists=True, dir_okay=False),
-    baselines: Path | None = typer.Option(None, exists=True, dir_okay=False),
+    baselines: Path | None = typer.Option(
+        None,
+        exists=True,
+        dir_okay=False,
+        help="Golden snapshot. With --base-ref, reported alongside last good vs this PR.",
+    ),
     base_ref: str | None = typer.Option(
         None,
         "--base-ref",
@@ -278,6 +299,11 @@ def gate(
                 last_good_sha=short_sha(repo_root, last_good_sha),
                 first_bad_sha=short_sha(repo_root, first_bad_sha),
             )
+            if baselines is not None:
+                attach_golden(
+                    compared,
+                    compare_run(first_bad, harness, load_baselines(baselines)),
+                )
             compare_path.write_text(json.dumps(compared.to_dict(), indent=2) + "\n")
             markdown = render_markdown(
                 compared,

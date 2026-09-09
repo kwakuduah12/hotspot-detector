@@ -4,10 +4,19 @@ import pytest
 
 from hotspot_detector.cli import app
 from hotspot_detector.runner import (
+    environment_fingerprint,
     parse_workload_stdout,
     resolve_command,
     wait_for_health,
 )
+
+
+def test_environment_fingerprint_has_runtime_python_and_machine():
+    fp = environment_fingerprint("docker")
+    assert fp["runtime"] == "docker"
+    assert fp["python"]
+    assert fp["machine"]
+    assert fp["system"]
 
 
 def test_resolve_command_rewrites_python():

@@ -19,6 +19,12 @@ hotspots:
     workloads:
       - query_filter
     notes: "Allocation-heavy scan/filter; see docs/methodology.md"
+  - id: export-path
+    paths:
+      - "demo_service/app/export.py"
+    workloads:
+      - export_jsonl
+    notes: "Allocation-heavy JSONL materialize; see docs/methodology.md"
 workloads:
   ingest_bulk:
     description: Bulk ingest of N records through serialize then index
@@ -46,5 +52,17 @@ workloads:
     operations:
       - name: scan
         baseline_ms: 69.7
+        threshold_pct: 30
+        threshold_ms: 40
+  export_jsonl:
+    description: Seeded JSONL export of the full store
+    command:
+      - python
+      - -m
+      - demo_service.workloads.export_jsonl
+    repeats: 5
+    operations:
+      - name: materialize
+        baseline_ms: 73.0
         threshold_pct: 30
         threshold_ms: 40

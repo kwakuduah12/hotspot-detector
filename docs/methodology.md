@@ -6,8 +6,7 @@ A hotspot is a source path that (1) sits on a critical request path and (2) show
 
 `demo_service` is a small FastAPI stand-in for a platform ingest/query API:
 
-- **Hot:** serialize + index on ingest (`ingest.py`, `index.py`) and scan/filter on query (`query.py`)
-- **Warm:** JSONL export (`export.py`) — identified, not wired in v1
+- **Hot:** serialize + index on ingest (`ingest.py`, `index.py`), scan/filter on query (`query.py`), and JSONL export (`export.py`)
 - **Cold:** health, config, FastAPI wiring — must not trigger workloads
 
 We are the owning team of this service, so stakeholder input and profiling happen in-tree.
@@ -36,7 +35,7 @@ Observed (local CPython 3.13, 1200 records, `HASH_ROUNDS=256`):
 
 - **ingest serialize + index:** ~0.40s in-process. `serialize_records` (`demo_service/app/ingest.py`) dominates (~0.34s) via `hashlib.sha256` and `json.dumps`. `index_records` (`demo_service/app/index.py`) is the next application frame (~0.06s) and still sits on the ingest critical path, so both files share the `ingest_bulk` workload.
 - **query scan_filter:** after seeding, `scan_filter` / `_score` (`demo_service/app/query.py`) account for the scan. Wired to `query_filter`.
-- **export_jsonl:** walks the full store and materializes JSONL. Clearly allocation-heavy, but no dedicated workload or baseline yet. Held in `demo_service/candidates.yaml`.
+- **export export_jsonl:** after seeding, `export_jsonl` (`demo_service/app/export.py`) dominates via repeated `json.dumps` / `json.loads` while materializing JSONL. Wired to `export_jsonl`.
 
 ## What we left out
 

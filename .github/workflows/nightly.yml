@@ -15,7 +15,7 @@ jobs:
           python-version: "3.12"
       - name: Install
         run: pip install -e ".[dev]"
-      - name: Run all workloads
+      - name: Run all workloads vs golden snapshot
         run: |
           mkdir -p results
           hotspot-detector run \
