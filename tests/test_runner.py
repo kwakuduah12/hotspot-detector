@@ -4,6 +4,7 @@ import pytest
 
 from hotspot_detector.cli import app
 from hotspot_detector.runner import (
+    compose_recipe_digest,
     environment_fingerprint,
     parse_workload_stdout,
     resolve_command,
@@ -17,6 +18,21 @@ def test_environment_fingerprint_has_runtime_python_and_machine():
     assert fp["python"]
     assert fp["machine"]
     assert fp["system"]
+    assert "compose" not in fp
+
+
+def test_environment_fingerprint_includes_compose_recipe(repo_root):
+    fp = environment_fingerprint("docker", repo_root=repo_root)
+    assert fp["compose"]
+    assert fp["compose"] == compose_recipe_digest(repo_root)
+
+
+def test_compose_recipe_digest_changes_when_dockerfile_changes(tmp_path):
+    (tmp_path / "Dockerfile").write_text("FROM python:3.12-slim\n")
+    (tmp_path / "docker-compose.yml").write_text("services: {}\n")
+    first = compose_recipe_digest(tmp_path)
+    (tmp_path / "Dockerfile").write_text("FROM python:3.13-slim\n")
+    assert compose_recipe_digest(tmp_path) != first
 
 
 def test_resolve_command_rewrites_python():

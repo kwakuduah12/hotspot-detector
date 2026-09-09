@@ -22,6 +22,13 @@ def format_ms(value: float | None) -> str:
     return f"{value:.1f}ms"
 
 
+def format_ms_with_spread(value: float | None, samples: list[float] | None = None) -> str:
+    shown = format_ms(value)
+    if not samples or len(samples) < 2:
+        return shown
+    return f"{shown} ({format_ms(min(samples))}–{format_ms(max(samples))})"
+
+
 def format_pct(value: float | None) -> str:
     if value is None:
         return "—"
@@ -120,7 +127,7 @@ def render_markdown(
             delta = f"{delta} ({format_pct(op.delta_pct)})"
         lines.append(
             f"| `{op.workload}` | `{op.operation}` | {format_ms(op.baseline_ms)} | "
-            f"{format_ms(op.current_ms)} | {delta} | `{op.status}` |"
+            f"{format_ms_with_spread(op.current_ms, op.samples)} | {delta} | `{op.status}` |"
         )
     if compare.golden_overall is not None:
         lines.extend(
@@ -138,7 +145,7 @@ def render_markdown(
                 delta = f"{delta} ({format_pct(op.delta_pct)})"
             lines.append(
                 f"| `{op.workload}` | `{op.operation}` | {format_ms(op.baseline_ms)} | "
-                f"{format_ms(op.current_ms)} | {delta} | `{op.status}` |"
+                f"{format_ms_with_spread(op.current_ms, op.samples)} | {delta} | `{op.status}` |"
             )
     lines.extend(
         [

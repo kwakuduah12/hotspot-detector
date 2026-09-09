@@ -307,7 +307,7 @@ def baselines_from_run(run: dict) -> BaselineCapture:
     )
 
 
-FINGERPRINT_KEYS = ("runtime", "python", "machine", "system")
+FINGERPRINT_KEYS = ("runtime", "python", "machine", "system", "compose")
 
 
 def fingerprint_mismatch(last_good: dict, first_bad: dict) -> str | None:

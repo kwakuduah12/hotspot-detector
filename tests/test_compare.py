@@ -187,6 +187,19 @@ def test_matching_fingerprints_still_compare():
     assert compare_runs(last_good, first_bad, _manifest()).overall == "ok"
 
 
+def test_compose_fingerprint_mismatch_refuses_compare():
+    last_good = {
+        "workloads": {"w": {"op": [100.0]}},
+        "fingerprint": {"runtime": "docker", "compose": "aaa111"},
+    }
+    first_bad = {
+        "workloads": {"w": {"op": [100.0]}},
+        "fingerprint": {"runtime": "docker", "compose": "bbb222"},
+    }
+    assert "compose" in (fingerprint_mismatch(last_good, first_bad) or "")
+    assert compare_runs(last_good, first_bad, _manifest()).fingerprint_ok is False
+
+
 def test_attach_golden_copies_snapshot_compare():
     last_good = {"workloads": {"w": {"op": [100.0]}}}
     first_bad = {"workloads": {"w": {"op": [160.0]}}}
