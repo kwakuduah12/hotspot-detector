@@ -35,11 +35,11 @@ workloads:
     repeats: 5
     operations:
       - name: serialize
-        baseline_ms: 261.8
+        baseline_ms: 255.6
         threshold_pct: 30
         threshold_ms: 80
       - name: index
-        baseline_ms: 58.4
+        baseline_ms: 56.2
         threshold_pct: 30
         threshold_ms: 40
   query_filter:
@@ -51,7 +51,7 @@ workloads:
     repeats: 5
     operations:
       - name: scan
-        baseline_ms: 69.7
+        baseline_ms: 70.4
         threshold_pct: 30
         threshold_ms: 40
   export_jsonl:
@@ -63,6 +63,6 @@ workloads:
     repeats: 5
     operations:
       - name: materialize
-        baseline_ms: 73.0
+        baseline_ms: 129.0
         threshold_pct: 30
         threshold_ms: 40

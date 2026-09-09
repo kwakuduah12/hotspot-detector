@@ -16,6 +16,7 @@ def test_load_baselines(baselines_path):
     assert captured.service_area == "demo-platform"
     assert "ingest_bulk" in captured.operations
     assert captured.operations["ingest_bulk"]["serialize"]["baseline_ms"] > 0
+    assert captured.operations["export_jsonl"]["materialize"]["baseline_ms"] > 100
 
 
 def test_load_baselines_rejects_non_mapping(tmp_path: Path):

@@ -52,7 +52,9 @@ A docs-only change (`docs/**`, `**/*.md`, `tests/**`) matches nothing and the ga
 ## Recorded CI proofs
 
 - **First-bad / synthetic regression:** closed [PR #2](https://github.com/kwakuduah12/hotspot-detector/pull/2) planted a 150ms serialize sleep. The gate posted `regression`. Do not merge that change.
-- **Docs-only quiet skip:** this PR. `perf.yml` should list only markdown, print a skip, and post no sticky comment.
+- **Docs-only quiet skip:** [PR #5](https://github.com/kwakuduah12/hotspot-detector/pull/5). `perf.yml` listed markdown, printed a skip, and posted no sticky comment.
+- **First onboard skip:** [PR #6](https://github.com/kwakuduah12/hotspot-detector/pull/6) added the export hotspot, but matching uses the merge-base manifest, so the gate quiet-skipped.
+- **Live export trigger:** [PR #7](https://github.com/kwakuduah12/hotspot-detector/pull/7) touched `export.py` after the hotspot was on `main`. CI ran `export_jsonl`, posted last good vs this PR (`ok`, 137.1ms → 136.3ms), and a golden section. Golden was noisy until the Docker capture in this change; last good was the merge call.
 
 ## Shadow snippet (next area)
 

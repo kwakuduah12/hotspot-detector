@@ -375,6 +375,42 @@ def test_capture_dry_run_writes_snapshot(tmp_path, runner, manifest_path, monkey
     assert "operations" in payload
 
 
+def test_capture_from_run_writes_snapshot(tmp_path, runner, manifest_path):
+    run_path = tmp_path / "run.json"
+    run_path.write_text(
+        json.dumps(
+            {
+                "environment": "docker",
+                "base_url": "http://127.0.0.1:8000",
+                "fingerprint": {
+                    "runtime": "docker",
+                    "python": "3.12.11",
+                    "machine": "x86_64",
+                    "system": "Linux",
+                },
+                "medians": {"export_jsonl": {"materialize": 137.1}},
+            }
+        )
+    )
+    out = tmp_path / "baselines.yaml"
+    result = runner.invoke(
+        app,
+        [
+            "capture",
+            "--manifest",
+            str(manifest_path),
+            "--from-run",
+            str(run_path),
+            "--output",
+            str(out),
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    payload = yaml.safe_load(out.read_text())
+    assert payload["operations"]["export_jsonl"]["materialize"]["baseline_ms"] == 137.1
+    assert payload["environment"]["python"] == "3.12.11"
+
+
 def test_gate_strict_dry_run_exits_nonzero(
     tmp_path, runner, manifest_path, baselines_path, monkeypatch
 ):

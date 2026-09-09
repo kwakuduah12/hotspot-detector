@@ -21,6 +21,7 @@ from hotspot_detector.compare import (
     attach_golden,
     compare_run,
     compare_runs,
+    snapshot_from_run,
 )
 from hotspot_detector.cosmetic import is_cosmetic_path
 from hotspot_detector.manifest import load_baselines, load_manifest
@@ -354,32 +355,34 @@ def gate(
 def capture(
     manifest: Path = typer.Option(..., exists=True, dir_okay=False),
     output: Path = typer.Option(..., "--output", "-o"),
+    from_run: Path | None = typer.Option(
+        None,
+        "--from-run",
+        exists=True,
+        dir_okay=False,
+        help="Reuse a completed run JSON instead of provisioning again.",
+    ),
     no_docker: bool = typer.Option(False, "--no-docker"),
 ) -> None:
     """Run every workload and write a baselines.yaml snapshot."""
     loaded = load_manifest(manifest)
-    run_path = Path("results") / "capture-run.json"
-    payload = run_workloads(
-        loaded,
-        list(loaded.workloads),
-        repo_root=_repo_root(),
-        output_path=run_path,
-        prefer_docker=not no_docker,
+    if from_run is not None:
+        payload = json.loads(from_run.read_text())
+    else:
+        run_path = Path("results") / "capture-run.json"
+        payload = run_workloads(
+            loaded,
+            list(loaded.workloads),
+            repo_root=_repo_root(),
+            output_path=run_path,
+            prefer_docker=not no_docker,
+        )
+    snapshot = snapshot_from_run(
+        payload,
+        service_area=loaded.service_area,
+        repeats=max((spec.repeats for spec in loaded.workloads.values()), default=5),
+        captured_at=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
     )
-    snapshot = {
-        "service_area": loaded.service_area,
-        "captured_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-        "environment": {
-            "runtime": payload.get("environment", "unknown"),
-            "base_url": payload.get("base_url"),
-        },
-        "repeats": max((spec.repeats for spec in loaded.workloads.values()), default=5),
-        "operations": {},
-    }
-    for workload_id, medians in payload.get("medians", {}).items():
-        snapshot["operations"][workload_id] = {
-            name: {"baseline_ms": round(float(value), 3)} for name, value in medians.items()
-        }
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(yaml.safe_dump(snapshot, sort_keys=False))
     typer.echo(f"Wrote {output}")
