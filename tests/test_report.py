@@ -2,6 +2,7 @@ from hotspot_detector.compare import CompareResult, OperationResult
 from hotspot_detector.manifest import load_manifest
 from hotspot_detector.report import (
     format_ms,
+    format_ms_with_spread,
     format_pct,
     render_ab_dry_run,
     render_markdown,
@@ -51,6 +52,7 @@ def test_ab_report_uses_last_good_headers_and_verdict(manifest):
                 threshold_pct=30.0,
                 threshold_ms=80.0,
                 status="regression",
+                samples=[400.0, 410.0, 430.0],
             )
         ],
         mode="ab",
@@ -68,6 +70,7 @@ def test_ab_report_uses_last_good_headers_and_verdict(manifest):
     assert "`abc1234`" in markdown
     assert "first-bad vs last good" in markdown
     assert "does not block merge" in markdown
+    assert "410.0ms (400.0ms–430.0ms)" in markdown
 
 
 def test_ab_report_fingerprint_refusal(manifest):
@@ -136,6 +139,9 @@ def test_ab_dry_run_report(manifest):
 def test_format_helpers():
     assert format_ms(None) == "—"
     assert format_ms(12.34) == "12.3ms"
+    assert format_ms_with_spread(12.34) == "12.3ms"
+    assert format_ms_with_spread(12.34, [12.34]) == "12.3ms"
+    assert format_ms_with_spread(12.0, [10.0, 14.0, 12.0]) == "12.0ms (10.0ms–14.0ms)"
     assert format_pct(None) == "—"
     assert format_pct(12.34) == "+12.3%"
     assert format_pct(-3.0) == "-3.0%"

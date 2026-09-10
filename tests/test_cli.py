@@ -27,6 +27,7 @@ def test_run_all_dry_run(tmp_path, runner, manifest_path, monkeypatch):
     payload = json.loads(out.read_text())
     assert set(payload["workloads"]) == {"ingest_bulk", "query_filter", "export_jsonl"}
     assert payload["fingerprint"]["runtime"] in {"docker", "local"}
+    assert payload["fingerprint"]["compose"]
 
 
 def test_run_rejects_unknown_workload(runner, manifest_path):

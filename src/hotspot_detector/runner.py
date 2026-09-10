@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import platform
@@ -27,14 +28,40 @@ def docker_available() -> bool:
     return shutil.which("docker") is not None
 
 
-def environment_fingerprint(runtime: str) -> dict[str, str]:
+COMPOSE_FINGERPRINT_FILES = ("Dockerfile", "docker-compose.yml")
+
+
+def compose_recipe_digest(repo_root: Path) -> str:
+    """Short hash of the container recipe, not the built image (SUT layers change)."""
+    hasher = hashlib.sha256()
+    found = False
+    for name in COMPOSE_FINGERPRINT_FILES:
+        path = repo_root / name
+        if not path.is_file():
+            continue
+        found = True
+        hasher.update(name.encode("utf-8"))
+        hasher.update(b"\0")
+        hasher.update(path.read_bytes())
+        hasher.update(b"\0")
+    if not found:
+        return ""
+    return hasher.hexdigest()[:12]
+
+
+def environment_fingerprint(runtime: str, repo_root: Path | None = None) -> dict[str, str]:
     """Identify the box so last-good and this PR are only compared when they match."""
-    return {
+    fingerprint = {
         "runtime": runtime,
         "python": platform.python_version(),
         "machine": platform.machine(),
         "system": platform.system(),
     }
+    if repo_root is not None:
+        digest = compose_recipe_digest(repo_root)
+        if digest:
+            fingerprint["compose"] = digest
+    return fingerprint
 
 
 def wait_for_health(base_url: str, timeout: float = 40.0) -> None:
@@ -192,7 +219,7 @@ def run_workloads(
         payload["harness_root"] = str(command_root)
         payload["harness_by_workload"] = {item["id"]: item["command_root"] for item in plan}
         runtime = payload.get("environment") or payload.get("would_provision") or "unknown"
-        payload["fingerprint"] = environment_fingerprint(str(runtime))
+        payload["fingerprint"] = environment_fingerprint(str(runtime), repo_root=repo_root)
         return payload
 
     if is_dry_run():
