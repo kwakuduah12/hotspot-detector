@@ -52,7 +52,8 @@ HOTSPOT_DRY_RUN=1 hotspot-detector run \
 ## Layout
 
 - `src/hotspot_detector/` — reusable CLI (`match`, `run`, `compare`, `report`, `gate`, `capture`)
-- `demo_service/` — first onboarded service area (FastAPI)
+- `demo_service/` — in-repo lab (FastAPI)
+- [`inbox-api`](https://github.com/kwakuduah12/inbox-api) — separate watched service; CI installs this CLI from GitHub
 - `docs/methodology.md` — how a path becomes a hotspot
 - `docs/baseline-metrics.md` — how baselines were captured
 - `docs/adoption-guide.md` — how another team onboards

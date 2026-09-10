@@ -2,7 +2,7 @@
 
 Onboard a service area by adding a manifest and a workload that prints operation timings. The CLI does not change.
 
-The worked example is **demo-platform** (`demo_service/`).
+The in-repo lab is **demo-platform** (`demo_service/`). The detector watching **another** service is [`inbox-api`](https://github.com/kwakuduah12/inbox-api): that repo owns the manifest and Compose stack, and CI `pip install`s this CLI from GitHub.
 
 ## Prerequisites
 
@@ -27,7 +27,7 @@ hotspot-detector capture \
   --output path/to/baselines.yaml
 ```
 
-5. **Copy the workflows.** Point `--manifest` at your file and keep `--base-ref origin/<base>` so CI measures last good (merge-base) then this PR in one job. Keep `perf.yml` non-blocking (`continue-on-error: true`). Keep `tests` required so a planted slowdown still fails CI if the detector regresses.
+5. **Copy the workflows.** In the **service** repo, `pip install` this CLI from GitHub (`git+https://github.com/kwakuduah12/hotspot-detector.git@main`), point `--manifest` at that repo's file, and keep `--base-ref origin/<base>` so CI measures last good (merge-base) then this PR in one job. Keep `perf.yml` non-blocking (`continue-on-error: true`). Keep `tests` required so a planted slowdown still fails CI if the detector regresses. Omit `--baselines` until a CI capture exists.
 6. **Prove the loop.** Open a test PR that touches a hotspot file, or run:
 
 ```bash
@@ -48,6 +48,19 @@ That script starts the demo service with `HOTSPOT_SLOWDOWN_MS=150` and expects `
 | Cold paths | `config.py`, `health.py` (not listed) |
 
 A docs-only change (`docs/**`, `**/*.md`, `tests/**`) matches nothing and the gate exits 0 without posting a comment. The same skip applies to comment, docstring, or whitespace-only edits in a hotspot `.py` file (compared to `--base-ref`). Matching uses the merge-base manifest so a PR cannot delete hotspots to skip, and unions hotspots the PR adds so a first onboard still runs. New workloads use the PR command (last good is still the merge-base SUT; golden / `baseline_ms` is the fallback until the next capture).
+
+## Consumer repo (inbox-api)
+
+[`inbox-api`](https://github.com/kwakuduah12/inbox-api) is a tiny FastAPI ingest service in a **separate** GitHub repo. It is the thing being watched; this repo stays the tool.
+
+| Piece | Location |
+|---|---|
+| Manifest | `hotspot-manifest.yaml` (repo root) |
+| Ingest hotspot | `inbox_api/app/serialize.py`, `index.py` → `ingest_bulk` |
+| Cold paths | `health.py`, `config.py` (not listed) |
+| Workflows | `.github/workflows/perf.yml` installs this CLI from GitHub |
+
+Live proof: [inbox-api PR #1](https://github.com/kwakuduah12/inbox-api/pull/1) touches `serialize.py` so CI posts last good vs this PR on **inbox-api**, not here.
 
 ## Recorded CI proofs
 
