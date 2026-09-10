@@ -29,8 +29,10 @@ def _round_trip_json(payload: str) -> str:
 def export_jsonl(store: RecordStore | None = None) -> str:
     """Serialize the whole store to JSONL. Intentionally allocation-heavy."""
     target = store or STORE
+    dumps = json.dumps
     lines: list[str] = []
     for record in target.records:
-        payload = json.dumps(record, sort_keys=True, separators=_SEPARATORS)
+        payload = dumps(record, sort_keys=True, separators=_SEPARATORS)
         lines.append(_round_trip_json(payload))
-    return "\n".join(lines) + ("\n" if lines else "")
+    newline = "\n"
+    return newline.join(lines) + (newline if lines else "")
